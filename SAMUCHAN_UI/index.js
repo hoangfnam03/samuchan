@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
 import * as cheerio from 'cheerio';
+import { spawn } from 'child_process';
 
 import { scanDirectory } from './fileService.js';
 
@@ -208,6 +209,10 @@ async function readTaobaoOrders() {
       payload?.updated_at ||
       null,
 
+    taobao_synced_at:
+      payload?.taobao_synced_at ||
+      null,
+
     orders:
       Array.isArray(
         payload?.orders
@@ -225,6 +230,11 @@ async function saveTaobaoOrders(
     {
       updated_at:
         new Date().toISOString(),
+
+      // Không đổi mốc đồng bộ Taobao khi chỉ lưu logistics Tuấn Vĩnh.
+      taobao_synced_at:
+        payload?.taobao_synced_at ||
+        null,
 
       orders:
         Array.isArray(
@@ -1788,6 +1798,47 @@ app.post(
 // GET TAOBAO ORDERS
 // ============================================================
 
+let taobaoSyncInProgress = false;
+
+app.post('/api/taobao/sync', async (req, res) => {
+  if (taobaoSyncInProgress) {
+    return res.status(409).json({ success: false, message: 'Đồng bộ Taobao đang chạy.' });
+  }
+
+  taobaoSyncInProgress = true;
+  const script = path.join(PROJECT_ROOT, 'samuchan.py');
+  const child = spawn('python', [script, '--sync'], {
+    cwd: PROJECT_ROOT,
+    windowsHide: true,
+  });
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString(); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+
+  child.once('error', (error) => {
+    taobaoSyncInProgress = false;
+    res.status(500).json({ success: false, message: `Không thể chạy samuchan.py: ${error.message}` });
+  });
+  child.once('close', async (code) => {
+    taobaoSyncInProgress = false;
+    if (code !== 0) {
+      const detail = output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.includes('temporary directories cleanup') && !line.includes('<gracefully close end>'))
+        .slice(-8)
+        .join('\n');
+      return res.status(500).json({ success: false, message: 'Đồng bộ Taobao thất bại.', detail });
+    }
+    try {
+      const payload = await readTaobaoOrders();
+      return res.json({ success: true, taobao_synced_at: payload.taobao_synced_at || payload.updated_at, orders: payload.orders.length });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+});
+
 app.get(
   '/api/taobao/orders',
   async (
@@ -1804,6 +1855,9 @@ app.get(
 
         updated_at:
           payload.updated_at,
+
+        taobao_synced_at:
+          payload.taobao_synced_at,
 
         orders:
           payload.orders,

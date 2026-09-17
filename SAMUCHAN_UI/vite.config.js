@@ -72,10 +72,19 @@ function taobaoApiPlugin() {
 // FE chạy ở :5173, Express backend chạy ở :3001. Mọi request /api phải
 // được chuyển đến Express, bao gồm /api/tuanvinh/track/:trackingNumber.
 export default defineConfig({
-  plugins: [react()],
+  // Khi chạy `npm run dev`, Vite tự đọc/ghi dữ liệu Taobao tại máy local.
+  // Trước đây plugin này bị khai báo nhưng không được đăng ký, nên request
+  // `/api/taobao/orders` bị chuyển sang backend :3001 và có thể nhận về HTML.
+  plugins: [react(), taobaoApiPlugin()],
   server: {
     proxy: {
-      '/api': {
+      '/api/taobao/sync': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      // Chỉ chuyển tiếp API logistics; hai endpoint /api/taobao/* ở trên
+      // được Vite phục vụ trực tiếp từ file dữ liệu local.
+      '/api/tuanvinh': {
         target: 'http://localhost:3001',
         changeOrigin: true,
       },

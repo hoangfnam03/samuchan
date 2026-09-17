@@ -2,6 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import samuchanLogo from './assets/samuchan-logo.png'
 
+async function readApiJson(response) {
+  const body = await response.text()
+
+  try {
+    return JSON.parse(body)
+  } catch {
+    const contentType = response.headers.get('content-type') || ''
+    const receivedHtml = contentType.includes('text/html') || body.trimStart().startsWith('<')
+    throw new Error(
+      receivedHtml
+        ? 'API trả về trang web thay vì dữ liệu. Hãy khởi động lại UI bằng npm run dev.'
+        : 'API trả về dữ liệu không hợp lệ.'
+    )
+  }
+}
+
 const SKU_TRANSLATIONS = {
   '黑色无挂件': 'Đen - không kèm phụ kiện',
   '棕色无挂件': 'Nâu - không kèm phụ kiện',
@@ -37,6 +53,8 @@ function statusClass(status) {
   const value = String(status || '').toLowerCase()
   if (value.includes('chưa giao') || value.includes('không tìm thấy')) return 'pending'
   if (value.includes('đã giao') || value.includes('giao hàng thành công')) return 'delivered'
+  if (value.includes('nhập kho việt nam')) return 'vietnam-warehouse'
+  if (value.includes('nhập kho trung quốc')) return 'china-warehouse'
   return 'shipping'
 }
 
@@ -231,7 +249,7 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
         }),
       })
 
-      const data = await response.json()
+      const data = await readApiJson(response)
 
       if (!response.ok || data?.success === false) {
         throw new Error(
@@ -506,8 +524,722 @@ function formatTimeValue(value) {
   const normalized = String(value).replace('T', ' ').replace('Z', '')
   return normalized.slice(0, 19)
 }
+// ============================================================
+// SKU MASTER
+// ============================================================
 
+const SKU_MASTER_STORAGE = 'samuchan_sku_master_v1'
+const SKU_LINK_STORAGE = 'samuchan_sku_item_links_v1'
 
+function loadSkuMaster() {
+  try {
+    const raw = localStorage.getItem(SKU_MASTER_STORAGE)
+    const data = JSON.parse(raw || '[]')
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
+}
+
+function saveSkuMaster(data) {
+  try {
+    localStorage.setItem(SKU_MASTER_STORAGE, JSON.stringify(data))
+  } catch {}
+}
+
+function loadSkuLinks() {
+  try {
+    const raw = localStorage.getItem(SKU_LINK_STORAGE)
+    const data = JSON.parse(raw || '{}')
+    return data && typeof data === 'object' ? data : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveSkuLinks(data) {
+  try {
+    localStorage.setItem(SKU_LINK_STORAGE, JSON.stringify(data))
+  } catch {}
+}
+
+function purchaseItemKey(order, index) {
+  return `${String(order.order_id || '')}::${index}`
+}
+
+function getAutoMatchedSku(item, skuMaster) {
+  const rawSku = String(item?.sku || '').trim()
+  if (!rawSku) return null
+
+  return skuMaster.find((master) =>
+    Array.isArray(master.taobao_skus) &&
+    master.taobao_skus.some(
+      (x) => String(x || '').trim() === rawSku
+    )
+  ) || null
+}
+function SkuMasterPage({
+  skuMaster,
+  setSkuMaster,
+  orders,
+  skuLinks,
+  setSkuLinks,
+}) {
+  const [editing, setEditing] = useState(null)
+  const [skuId, setSkuId] = useState('')
+  const [skuName, setSkuName] = useState('')
+  const [skuImage, setSkuImage] = useState('')
+  const [taobaoSkus, setTaobaoSkus] = useState('')
+  const [notes, setNotes] = useState('')
+  const [search, setSearch] = useState('')
+
+  const resetForm = () => {
+    setEditing(null)
+    setSkuId('')
+    setSkuName('')
+    setSkuImage('')
+    setTaobaoSkus('')
+    setNotes('')
+  }
+
+  const startEdit = (sku) => {
+    setEditing(sku.id)
+    setSkuId(sku.id)
+    setSkuName(sku.name || '')
+    setSkuImage(sku.image || '')
+    setTaobaoSkus(
+      Array.isArray(sku.taobao_skus)
+        ? sku.taobao_skus.join('\n')
+        : ''
+    )
+    setNotes(sku.notes || '')
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
+  }
+
+  const handleImage = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      setSkuImage(String(reader.result || ''))
+    }
+
+    reader.readAsDataURL(file)
+  }
+
+  const saveSku = () => {
+    const id = skuId.trim()
+    const name = skuName.trim()
+
+    if (!id) {
+      alert('Vui lòng nhập SKU ID.')
+      return
+    }
+
+    if (!name) {
+      alert('Vui lòng nhập tên SKU.')
+      return
+    }
+
+    const aliases = taobaoSkus
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean)
+
+    const now = new Date().toISOString()
+
+    const record = {
+      id,
+      name,
+      image: skuImage || '',
+      taobao_skus: [...new Set(aliases)],
+      notes: notes.trim(),
+      created_at:
+        editing
+          ? (
+              skuMaster.find((x) => x.id === editing)?.created_at ||
+              now
+            )
+          : now,
+      updated_at: now,
+    }
+
+    const duplicate = skuMaster.some(
+      (x) => x.id === id && x.id !== editing
+    )
+
+    if (duplicate) {
+      alert(`SKU ID "${id}" đã tồn tại.`)
+      return
+    }
+
+    let next
+
+    if (editing) {
+      next = skuMaster.map((x) =>
+        x.id === editing ? record : x
+      )
+    } else {
+      next = [...skuMaster, record]
+    }
+
+    next.sort((a, b) =>
+      String(a.id).localeCompare(String(b.id))
+    )
+
+    setSkuMaster(next)
+    saveSkuMaster(next)
+
+    resetForm()
+  }
+
+  const deleteSku = (id) => {
+    const sku = skuMaster.find((x) => x.id === id)
+
+    if (!sku) return
+
+    const confirmed = window.confirm(
+      `Xóa SKU ${id} - ${sku.name}?`
+    )
+
+    if (!confirmed) return
+
+    const next = skuMaster.filter((x) => x.id !== id)
+
+    setSkuMaster(next)
+    saveSkuMaster(next)
+  }
+
+  const filtered = skuMaster.filter((sku) => {
+    const keyword = search.trim().toLowerCase()
+
+    if (!keyword) return true
+
+    return [
+      sku.id,
+      sku.name,
+      ...(sku.taobao_skus || []),
+      sku.notes,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword)
+  })
+
+  const getPurchaseStats = (masterId) => {
+    let quantity = 0
+    let totalCny = 0
+    let itemCount = 0
+
+    orders.forEach((order) => {
+      order.items.forEach((item, index) => {
+        const key = purchaseItemKey(order, index)
+
+        const linkedId =
+          skuLinks[key] ||
+          getAutoMatchedSku(item, skuMaster)?.id
+
+        if (linkedId !== masterId) return
+
+        const qty = Number(item.quantity || 0)
+        const price = Number(item.unit_price_cny || 0)
+
+        quantity += qty
+        totalCny += qty * price
+        itemCount += 1
+      })
+    })
+
+    return {
+      quantity,
+      totalCny,
+      itemCount,
+      averageCost:
+        quantity > 0
+          ? totalCny / quantity
+          : 0,
+    }
+  }
+
+  const assignPurchaseItem = (order, index, masterId) => {
+    const key = purchaseItemKey(order, index)
+
+    const next = {
+      ...skuLinks,
+    }
+
+    if (!masterId) {
+      delete next[key]
+    } else {
+      next[key] = masterId
+    }
+
+    setSkuLinks(next)
+    saveSkuLinks(next)
+  }
+
+  return (
+    <main className="dashboard">
+      <section className="page-heading">
+        <div>
+          <p className="eyebrow">SKU MASTER</p>
+
+          <h1>SKU Master</h1>
+
+          <p className="heading-description">
+            Quản lý SKU chuẩn của SAMUCHAN và liên kết với SKU Taobao.
+          </p>
+        </div>
+
+        <div className="last-sync">
+          <span className="online-dot" />
+          {skuMaster.length} SKU
+        </div>
+      </section>
+
+      {/* ================================================== */}
+      {/* FORM */}
+      {/* ================================================== */}
+
+      <section className="sku-master-form">
+        <div className="sku-form-header">
+          <div>
+            <p className="eyebrow">
+              {editing ? 'EDIT SKU' : 'NEW SKU'}
+            </p>
+
+            <h2>
+              {editing
+                ? `Chỉnh sửa ${editing}`
+                : 'Tạo SKU mới'}
+            </h2>
+          </div>
+
+          {editing && (
+            <button
+              type="button"
+              className="tracking-cancel-button"
+              onClick={resetForm}
+            >
+              Hủy sửa
+            </button>
+          )}
+        </div>
+
+        <div className="sku-form-grid">
+
+          <div className="sku-image-editor">
+
+            <div className="sku-image-preview">
+              {skuImage ? (
+                <img
+                  src={skuImage}
+                  alt={skuName || 'SKU'}
+                />
+              ) : (
+                <span>🖼️</span>
+              )}
+            </div>
+
+            <label className="sku-upload-button">
+              Chọn ảnh sản phẩm
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImage}
+                hidden
+              />
+            </label>
+          </div>
+
+          <div className="sku-form-fields">
+
+            <label>
+              <span>SKU ID *</span>
+
+              <input
+                value={skuId}
+                onChange={(e) =>
+                  setSkuId(e.target.value.toUpperCase())
+                }
+                disabled={Boolean(editing)}
+                placeholder="VD: SAM-001"
+              />
+            </label>
+
+            <label>
+              <span>Tên SKU *</span>
+
+              <input
+                value={skuName}
+                onChange={(e) =>
+                  setSkuName(e.target.value)
+                }
+                placeholder="VD: Túi nâu mini"
+              />
+            </label>
+
+            <label>
+              <span>SKU Taobao tương ứng</span>
+
+              <textarea
+                value={taobaoSkus}
+                onChange={(e) =>
+                  setTaobaoSkus(e.target.value)
+                }
+                placeholder={`Mỗi SKU một dòng
+
+VD:
+棕色无挂件
+棕色`}
+                rows={4}
+              />
+
+              <small>
+                Purchase sẽ tự nhận diện nếu SKU Taobao
+                trùng chính xác một trong các dòng này.
+              </small>
+            </label>
+
+            <label>
+              <span>Ghi chú</span>
+
+              <textarea
+                value={notes}
+                onChange={(e) =>
+                  setNotes(e.target.value)
+                }
+                placeholder="Ghi chú sản phẩm..."
+                rows={2}
+              />
+            </label>
+
+            <button
+              type="button"
+              className="sku-save-button"
+              onClick={saveSku}
+            >
+              {editing
+                ? '✓ Lưu thay đổi'
+                : '+ Tạo SKU'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ================================================== */}
+      {/* SKU LIST */}
+      {/* ================================================== */}
+
+      <section className="orders-card sku-master-card">
+
+        <div className="toolbar">
+
+          <div className="search-box">
+            <span>⌕</span>
+
+            <input
+              value={search}
+              onChange={(e) =>
+                setSearch(e.target.value)
+              }
+              placeholder="Tìm SKU ID, tên, SKU Taobao..."
+            />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          <div className="sku-count">
+            {filtered.length} SKU
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="empty-state">
+            Chưa có SKU Master.
+          </div>
+        ) : (
+          <div className="sku-master-list">
+
+            {filtered.map((sku) => {
+
+              const stats =
+                getPurchaseStats(sku.id)
+
+              return (
+                <div
+                  className="sku-master-row"
+                  key={sku.id}
+                >
+
+                  <div className="sku-master-image">
+                    {sku.image ? (
+                      <img
+                        src={sku.image}
+                        alt={sku.name}
+                      />
+                    ) : (
+                      <span>🛍️</span>
+                    )}
+                  </div>
+
+                  <div className="sku-master-main">
+
+                    <div className="sku-master-title">
+                      <strong>{sku.id}</strong>
+
+                      <span>
+                        {sku.name}
+                      </span>
+                    </div>
+
+                    <div className="sku-master-alias">
+                      {sku.taobao_skus?.length
+                        ? sku.taobao_skus.map((x) => (
+                            <span key={x}>
+                              {x}
+                            </span>
+                          ))
+                        : (
+                            <small>
+                              Chưa khai báo SKU Taobao
+                            </small>
+                          )}
+                    </div>
+
+                    <div className="sku-master-stats">
+
+                      <div>
+                        <small>Đã mua</small>
+                        <strong>
+                          {stats.quantity}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <small>Số dòng Purchase</small>
+                        <strong>
+                          {stats.itemCount}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <small>Tổng tiền</small>
+                        <strong>
+                          ¥{stats.totalCny.toFixed(2)}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <small>Giá vốn TB</small>
+                        <strong>
+                          ¥{stats.averageCost.toFixed(2)}
+                        </strong>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  <div className="sku-master-actions">
+
+                    <button
+                      type="button"
+                      onClick={() => startEdit(sku)}
+                    >
+                      ✎ Sửa
+                    </button>
+
+                    <button
+                      type="button"
+                      className="sku-delete-button"
+                      onClick={() => deleteSku(sku.id)}
+                    >
+                      × Xóa
+                    </button>
+
+                  </div>
+
+                </div>
+              )
+            })}
+
+          </div>
+        )}
+      </section>
+
+      {/* ================================================== */}
+      {/* PURCHASE MAPPING */}
+      {/* ================================================== */}
+
+      <section className="orders-card sku-purchase-map-card">
+
+        <div className="sku-section-heading">
+          <div>
+            <p className="eyebrow">
+              PURCHASE → SKU
+            </p>
+
+            <h2>
+              Phân loại sản phẩm đã mua
+            </h2>
+
+            <p>
+              SKU Taobao trùng alias sẽ tự nhận diện.
+              Nếu chưa đúng, bạn có thể gán SKU thủ công.
+            </p>
+          </div>
+        </div>
+
+        {orders.length === 0 ? (
+          <div className="empty-state">
+            Chưa có dữ liệu Purchase.
+          </div>
+        ) : (
+          <div className="purchase-sku-list">
+
+            {orders.flatMap((order) =>
+              order.items.map((item, index) => {
+
+                const key =
+                  purchaseItemKey(order, index)
+
+                const manualSku =
+                  skuLinks[key] || ''
+
+                const autoSku =
+                  getAutoMatchedSku(
+                    item,
+                    skuMaster
+                  )
+
+                const currentSku =
+                  manualSku || autoSku?.id || ''
+
+                return (
+                  <div
+                    className="purchase-sku-row"
+                    key={key}
+                  >
+
+                    <div className="purchase-sku-image">
+
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt={item.product_name}
+                        />
+                      ) : (
+                        <span>🛍️</span>
+                      )}
+
+                    </div>
+
+                    <div className="purchase-sku-product">
+
+                      <strong>
+                        {item.product_name || '-'}
+                      </strong>
+
+                      <span>
+                        SKU Taobao:{' '}
+                        {item.sku || '-'}
+                      </span>
+
+                      <small>
+                        Order #{order.order_id}
+                      </small>
+
+                    </div>
+
+                    <div className="purchase-sku-numbers">
+
+                      <span>
+                        SL:{' '}
+                        <b>
+                          {item.quantity || 0}
+                        </b>
+                      </span>
+
+                      <span>
+                        ¥
+                        {Number(
+                          item.unit_price_cny || 0
+                        ).toFixed(2)}
+                      </span>
+
+                    </div>
+
+                    <div className="purchase-sku-assignment">
+
+                      <select
+                        value={currentSku}
+                        onChange={(e) =>
+                          assignPurchaseItem(
+                            order,
+                            index,
+                            e.target.value
+                          )
+                        }
+                      >
+                        <option value="">
+                          — Chưa phân loại —
+                        </option>
+
+                        {skuMaster.map((master) => (
+                          <option
+                            key={master.id}
+                            value={master.id}
+                          >
+                            {master.id} — {master.name}
+                          </option>
+                        ))}
+
+                      </select>
+
+                      {manualSku ? (
+                        <small className="sku-mapping-manual">
+                          ✓ Gán thủ công
+                        </small>
+                      ) : autoSku ? (
+                        <small className="sku-mapping-auto">
+                          ✓ Tự nhận diện
+                        </small>
+                      ) : (
+                        <small className="sku-mapping-none">
+                          Chưa nhận diện
+                        </small>
+                      )}
+
+                    </div>
+
+                  </div>
+                )
+              })
+            )}
+
+          </div>
+        )}
+
+      </section>
+    </main>
+  )
+}
 function ImageViewer({ image, name, onClose }) {
   return (
     <div className="image-viewer-backdrop" onClick={onClose}>
@@ -522,6 +1254,39 @@ function ImageViewer({ image, name, onClose }) {
 
 function App() {
   const [orders, setOrders] = useState([])
+  const [taobaoSyncedAt, setTaobaoSyncedAt] = useState(null)
+    const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('samuchan_active_tab') || 'purchase'
+    } catch {
+      return 'purchase'
+    }
+  })
+
+  const [skuMaster, setSkuMaster] = useState(() =>
+    loadSkuMaster()
+  )
+
+  const [skuLinks, setSkuLinks] = useState(() =>
+    loadSkuLinks()
+  )
+
+  useEffect(() => {
+    saveSkuMaster(skuMaster)
+  }, [skuMaster])
+
+  useEffect(() => {
+    saveSkuLinks(skuLinks)
+  }, [skuLinks])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'samuchan_active_tab',
+        activeTab
+      )
+    } catch {}
+  }, [activeTab])
   const [updatedAt, setUpdatedAt] = useState(null)
   const [activeFilter, setActiveFilter] = useState('Tất cả')
   const [search, setSearch] = useState('')
@@ -568,7 +1333,7 @@ function App() {
         }
       )
 
-      const payload = await response.json()
+      const payload = await readApiJson(response)
 
       if (!response.ok || payload?.success === false) {
         throw new Error(
@@ -646,18 +1411,44 @@ function App() {
     try {
       setLoading(true); setError('')
       const response = await fetch('/api/taobao/orders', { cache: 'no-store' })
-      const data = await response.json()
+      const data = await readApiJson(response)
       if (!response.ok) throw new Error(data.message || 'Không đọc được dữ liệu Taobao')
       const normalized = normalizeOrders(data)
       setOrders(normalized)
       setUpdatedAt(data.updated_at || null)
+      setTaobaoSyncedAt(data.taobao_synced_at || null)
       setLoading(false)
       enrichTuanVinh(normalized)
+      return data
     } catch (err) {
       setError(err.message || 'Không đọc được dữ liệu Taobao')
       setLoading(false)
     }
   }, [enrichTuanVinh])
+
+  const syncAll = useCallback(async () => {
+    try {
+      setLoading(true); setError('')
+      const response = await fetch('/api/taobao/sync', { method: 'POST' })
+      const data = await readApiJson(response)
+      if (!response.ok || data?.success === false) {
+        const detail = String(data?.detail || '')
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .slice(-8)
+          .join(' ')
+        throw new Error([data?.message || 'Không thể đồng bộ Taobao', detail].filter(Boolean).join(' '))
+      }
+      await loadOrders()
+      // Dùng mốc backend vừa trả về để UI phản ánh ngay cả khi dev server
+      // vẫn đang giữ lần đọc file trước đó trong một khoảnh khắc.
+      setTaobaoSyncedAt(data.taobao_synced_at || null)
+    } catch (err) {
+      setError(err.message || 'Không thể đồng bộ Taobao')
+      setLoading(false)
+    }
+  }, [loadOrders])
 
   useEffect(() => { loadOrders() }, [loadOrders])
 
@@ -787,13 +1578,64 @@ function App() {
         <div className="brand">
           <img className="brand-logo" src={samuchanLogo} alt="SAMUCHAN Gift & Custom" />
         </div>
-        <button className="sync-button" type="button" onClick={loadOrders} disabled={loading}><span>↻</span>{loading ? 'Đang đọc...' : logisticsLoading ? 'Đang cập nhật Tuấn Vĩnh...' : 'Cập nhật Taobao'}</button>
+        <button className="sync-button" type="button" onClick={syncAll} disabled={loading}><span>↻</span>{loading ? 'Đang đồng bộ...' : logisticsLoading ? 'Đang cập nhật Tuấn Vĩnh...' : 'Cập nhật Taobao'}</button>
       </header>
 
-      <main className="dashboard">
+      <div className="samuchan-tabs">
+  <button
+    type="button"
+    className={activeTab === 'purchase' ? 'active' : ''}
+    onClick={() => setActiveTab('purchase')}
+  >
+    🧾 PURCHASE
+  </button>
+
+  <button
+    type="button"
+    className={activeTab === 'sku-master' ? 'active' : ''}
+    onClick={() => setActiveTab('sku-master')}
+  >
+    🏷️ SKU MASTER
+  </button>
+
+  <button
+    type="button"
+    className={activeTab === 'shop' ? 'active' : ''}
+    onClick={() => setActiveTab('shop')}
+  >
+    🛍️ SAMU.SHOP
+  </button>
+</div>
+
+{activeTab === 'sku-master' ? (
+  <SkuMasterPage
+    skuMaster={skuMaster}
+    setSkuMaster={setSkuMaster}
+    orders={orders}
+    skuLinks={skuLinks}
+    setSkuLinks={setSkuLinks}
+  />
+) : activeTab === 'shop' ? (
+  <main className="dashboard">
+    <section className="page-heading">
+      <div>
+        <p className="eyebrow">SAMU.SHOP</p>
+        <h1>SAMU.shop</h1>
+        <p className="heading-description">
+          Quản lý đơn bán hàng của SAMUCHAN.
+        </p>
+      </div>
+    </section>
+
+    <div className="empty-state">
+      SAMU.shop sẽ kết nối với SKU Master ở bước tiếp theo.
+    </div>
+  </main>
+) : (
+  <main className="dashboard">
         <section className="page-heading">
           <div><p className="eyebrow">PURCHASES</p><h1>Purchases</h1><p className="heading-description">Quản lý đơn mua hàng Taobao theo ngày và Order ID.</p></div>
-          <div className="last-sync"><span className="online-dot" />{orders.length ? `Đã đồng bộ · ${formatTime(updatedAt)}` : 'Chưa có dữ liệu'}</div>
+          <div className="last-sync"><span className="online-dot" />{orders.length ? (taobaoSyncedAt ? `Đồng bộ Taobao · ${formatTime(taobaoSyncedAt)}` : 'Chưa có mốc đồng bộ Taobao') : 'Chưa có dữ liệu'}</div>
         </section>
         {error && <div className="error-box">⚠️ {error}</div>}
 
@@ -912,6 +1754,7 @@ function App() {
           <div className="table-footer"><span>Hiển thị {filteredOrders.length} đơn · {trackingCount} đơn có tracking</span><span>{logisticsLoading ? 'Đang đồng bộ Tuấn Vĩnh...' : 'Click Order ID để xem sản phẩm'}</span></div>
         </section>
       </main>
+      )}
 
       {
         selectedOrder && (

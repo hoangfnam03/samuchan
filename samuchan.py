@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta
 import json
+import sys
 import re
 import time
 
@@ -105,7 +106,7 @@ def save_debug_page(page, name):
 # TAOBAO NAVIGATION
 # ============================================================
 
-def open_taobao(page):
+def open_taobao(page, interactive=True):
     print("\n🌐 Đang mở Taobao...")
     try:
         page.goto("https://www.taobao.com/", wait_until="commit", timeout=60000)
@@ -116,6 +117,11 @@ def open_taobao(page):
     print("URL:", page.url)
 
     if "passport.taobao.com" in page.url.lower():
+        if not interactive:
+            raise RuntimeError(
+                "Taobao chưa đăng nhập trong profile. Hãy chạy python samuchan.py "
+                "và chọn mục 1 để đăng nhập trước."
+            )
         print("""
 ==================================================
 ⚠️ TAOBAO CHƯA ĐĂNG NHẬP
@@ -1042,6 +1048,9 @@ def save_orders(orders):
     final_orders = list(merged.values())
     payload = {
         "updated_at": datetime.now().isoformat(timespec="seconds"),
+        # Chỉ thay đổi khi scraper Taobao thực sự chạy xong. Backend cập nhật
+        # vận chuyển Tuấn Vĩnh không được dùng mốc thời gian này.
+        "taobao_synced_at": datetime.now().isoformat(timespec="seconds"),
         "orders": final_orders,
     }
     OUTPUT_FILE.write_text(
@@ -1143,24 +1152,27 @@ def show_dashboard(orders):
 # RUN
 # ============================================================
 
-def run_taobao():
+def run_taobao(interactive=True):
     with sync_playwright() as p:
         context, page = create_browser(p)
         if context is None:
-            return
+            return False
 
         try:
-            open_taobao(page)
+            open_taobao(page, interactive=interactive)
             page = open_my_orders(page)
             if page is None:
-                return
+                return False
 
             orders = scrape_orders(page)
-            orders = input_missing_tracking(orders)
+            if interactive:
+                orders = input_missing_tracking(orders)
             final_orders = save_orders(orders)
             show_dashboard(final_orders)
 
-            input("\nENTER để đóng browser...")
+            if interactive:
+                input("\nENTER để đóng browser...")
+            return True
         finally:
             try:
                 context.close()
@@ -1256,4 +1268,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--sync" in sys.argv:
+        try:
+            success = run_taobao(interactive=False)
+            raise SystemExit(0 if success else 1)
+        except Exception as error:
+            # Backend dùng dòng này để hiển thị lỗi thực tế thay vì log dọn
+            # dẹp Chromium ở cuối output.
+            print(f"SYNC_ERROR: {error}")
+            raise
+    else:
+        main()
