@@ -1,0 +1,22 @@
+{
+  "name": "samuchan-taobao-ui",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "playwright": "^1.63.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  }
+}
