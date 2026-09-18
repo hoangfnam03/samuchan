@@ -817,8 +817,13 @@ def logistics_status(existing_status, existing_tracking, existing_delivered, tra
 # ============================================================
 # PARSE ONE ORDER
 # ============================================================
-
-def parse_order(page, container, index, existing_orders):
+def parse_order(
+    page,
+    container,
+    index,
+    existing_orders,
+    fetch_logistics=False,
+):
     order_id = extract_order_id(container)
     shop = extract_shop(container)
     order_date = extract_order_date(container)
@@ -826,6 +831,7 @@ def parse_order(page, container, index, existing_orders):
     items = extract_items(container)
 
     old = existing_orders.get(str(order_id), {}) if order_id else {}
+
     existing_tracking = old.get("tracking_number")
     existing_tracking_source = old.get("tracking_source")
     existing_delivered = old.get("delivered_to_china_at")
@@ -839,39 +845,99 @@ def parse_order(page, container, index, existing_orders):
     for j, item in enumerate(items, 1):
         print(f"  Item {j}: {item['product_name']}")
         print(f"    SKU: {item['sku']}")
-        print(f"    SL: {item['quantity']} | Giá: ¥{item['unit_price_cny']:.2f}")
+        print(
+            f"    SL: {item['quantity']} | "
+            f"Giá: ¥{item['unit_price_cny']:.2f}"
+        )
 
     print(f"Tổng đơn: ¥{order_total:.2f}")
 
+    # --------------------------------------------------------
+    # GIỮ DỮ LIỆU LOGISTICS CŨ
+    # --------------------------------------------------------
     tracking = existing_tracking
-    tracking_source = existing_tracking_source or ("taobao" if existing_tracking else None)
+    tracking_source = (
+        existing_tracking_source
+        or ("taobao" if existing_tracking else None)
+    )
+
     delivered_at = existing_delivered
     shipped_at = old.get("shipped_at")
     previous_status = old.get("status")
     logistics_error = None
-    text = safe_inner_text(container, 6000)
-    has_view_logistics = "查看物流" in text
 
-    if has_view_logistics:
-        print("🚚 Có 查看物流 → bắt network để lấy tracking...")
+    # --------------------------------------------------------
+    # FULL SYNC:
+    # KHÔNG mở 查看物流 để tránh Chromium crash.
+    #
+    # Sau khi lấy xong toàn bộ order history,
+    # logistics sẽ được xử lý bằng cơ chế riêng.
+    # --------------------------------------------------------
+    if fetch_logistics:
         try:
-            new_tracking, new_delivered, new_shipped, error = get_logistics_data(page, container, index)
-            if new_tracking:
-                # Never replace a manually entered tracking number with Taobao auto data.
-                if tracking_source != "manual":
-                    tracking = new_tracking
-                    tracking_source = "taobao"
-            if new_delivered:
-                delivered_at = new_delivered
-            if new_shipped:
-                shipped_at = new_shipped
-            logistics_error = error
+            text = safe_inner_text(container, 6000)
+            has_view_logistics = "查看物流" in text
+
+            if has_view_logistics:
+                print(
+                    "🚚 Có 查看物流 → bắt network để lấy tracking..."
+                )
+
+                try:
+                    (
+                        new_tracking,
+                        new_delivered,
+                        new_shipped,
+                        error,
+                    ) = get_logistics_data(
+                        page,
+                        container,
+                        index,
+                    )
+
+                    if new_tracking:
+                        # Không ghi đè tracking nhập tay.
+                        if tracking_source != "manual":
+                            tracking = new_tracking
+                            tracking_source = "taobao"
+
+                    if new_delivered:
+                        delivered_at = new_delivered
+
+                    if new_shipped:
+                        shipped_at = new_shipped
+
+                    logistics_error = error
+
+                except Exception as e:
+                    logistics_error = str(e)[:300]
+                    print(
+                        "  ⚠️ Lỗi logistics:",
+                        logistics_error,
+                    )
+
+            else:
+                print(
+                    "ℹ️ Không có 查看物流 → "
+                    "giữ tracking/delivery cũ nếu có."
+                )
+
         except Exception as e:
             logistics_error = str(e)[:300]
-            print("  ⚠️ Lỗi logistics:", logistics_error)
-    else:
-        print("ℹ️ Không có 查看物流 → giữ tracking/delivery cũ nếu có.")
+            print(
+                "  ⚠️ Không thể đọc logistics:",
+                logistics_error,
+            )
 
+    else:
+        print(
+            "⏭️ Bỏ qua 查看物流 trong FULL SYNC "
+            "→ ưu tiên lấy toàn bộ đơn hàng."
+        )
+
+    # --------------------------------------------------------
+    # STATUS
+    # --------------------------------------------------------
     status = logistics_status(
         existing_status=previous_status,
         existing_tracking=existing_tracking,
@@ -880,12 +946,17 @@ def parse_order(page, container, index, existing_orders):
         delivered_at=delivered_at,
         shipped_at=shipped_at,
         logistics_error=logistics_error,
-        has_view_logistics=has_view_logistics,
+        has_view_logistics=(
+            "查看物流" in safe_inner_text(container, 6000)
+            if fetch_logistics
+            else False
+        ),
     )
 
     print("Trạng thái:", status)
     print("Tracking:", tracking)
     print("Ngày tới kho TQ:", delivered_at)
+
     if logistics_error:
         print("Logistics note:", logistics_error)
 
@@ -897,11 +968,11 @@ def parse_order(page, container, index, existing_orders):
         "items": items,
         "status": status,
         "tracking_number": tracking,
+        "tracking_source": tracking_source,
         "shipped_at": shipped_at,
         "delivered_to_china_at": delivered_at,
         "logistics_note": logistics_error,
     }
-
 
 # ============================================================
 # PAGINATION / FULL HISTORY
@@ -1017,7 +1088,6 @@ def scrape_all_order_pages(page):
         if not candidates:
             print("⚠️ Không có order card → dừng.")
             break
-
         for local_i, container in enumerate(
             candidates,
             start=1
@@ -1028,6 +1098,7 @@ def scrape_all_order_pages(page):
                     container,
                     f"{page_no}.{local_i}",
                     existing_orders,
+                    fetch_logistics=False,
                 )
 
                 key = order.get("order_id") or (
@@ -1044,6 +1115,10 @@ def scrape_all_order_pages(page):
                 all_orders.append(order)
 
             except Exception as e:
+                print(
+                    f"[{page_no}.{local_i}] Parse error:",
+                    str(e)[:250],
+                )
                 print(
                     f"[{page_no}.{local_i}] Parse error:",
                     str(e)[:250],
