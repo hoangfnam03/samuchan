@@ -1895,7 +1895,7 @@ function runTaobaoPythonSync() {
 
       const commandArgs = [
         script,
-        '--sync'
+    
       ];
 
 
