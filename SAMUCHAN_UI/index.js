@@ -214,6 +214,9 @@ async function readTaobaoOrders() {
       payload?.taobao_synced_at ||
       null,
 
+    initial_sync_completed:
+      payload?.initial_sync_completed === true,
+
     orders:
       Array.isArray(
         payload?.orders
@@ -236,6 +239,9 @@ async function saveTaobaoOrders(
       taobao_synced_at:
         payload?.taobao_synced_at ||
         null,
+
+      initial_sync_completed:
+        payload?.initial_sync_completed === true,
 
       orders:
         Array.isArray(
