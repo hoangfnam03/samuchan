@@ -137,6 +137,7 @@ export default defineConfig({
   // `/api/taobao/orders` bị chuyển sang backend :3001 và có thể nhận về HTML.
   plugins: [react(), taobaoApiPlugin()],
   server: {
+    host: '0.0.0.0',
     proxy: {
       // Chỉ chuyển tiếp API logistics; hai endpoint /api/taobao/* ở trên
       // được Vite phục vụ trực tiếp từ file dữ liệu local.
