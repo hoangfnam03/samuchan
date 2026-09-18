@@ -32,33 +32,37 @@ PAGE_WAIT_MS = 2500
 # BROWSER
 # ============================================================
 
+
 def create_browser(p):
+    storage_state = DATA_DIR / "taobao_storage_state.json"
+
     try:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=str(PROFILE_DIR),
+        browser = p.chromium.launch(
             headless=True,
-            # Dùng Chrome đã cài trên máy thay cho Chromium bundled của
-            # Playwright, vì một số máy Windows chặn ms-playwright bằng policy.
-           
-            viewport={"width": 1440, "height": 1000},
-            locale="zh-CN",
-            timezone_id="Asia/Shanghai",
         )
+
+        context_kwargs = {
+            "viewport": {"width": 1440, "height": 1000},
+            "locale": "zh-CN",
+            "timezone_id": "Asia/Shanghai",
+        }
+
+        if storage_state.exists() and storage_state.stat().st_size > 0:
+            print("✓ Đang dùng Taobao storage state:", storage_state)
+            context_kwargs["storage_state"] = str(storage_state)
+        else:
+            print("⚠️ Không có Taobao storage state.")
+
+        context = browser.new_context(**context_kwargs)
+
+        page = context.pages[0] if context.pages else context.new_page()
+
+        return context, page
+
     except Exception as e:
-        if "Opening in existing browser session" in str(e):
-            print("\n" + "=" * 60)
-            print("⚠️ PROFILE TAOBAO ĐANG ĐƯỢC SỬ DỤNG")
-            print("=" * 60)
-            print("Hãy đóng cửa sổ Chromium/Taobao đang mở trước đó.")
-            print("Sau đó chạy lại: python samuchan.py")
-            print("=" * 60)
-            return None, None
-        raise
-
-    page = context.pages[0] if context.pages else context.new_page()
-    return context, page
-
-
+        print("\n❌ Không thể mở browser:")
+        print(e)
+        return None, None
 # ============================================================
 # BASIC HELPERS
 # ============================================================
