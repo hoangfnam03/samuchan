@@ -25,8 +25,8 @@ LOGISTICS_WAIT_MS = 8000
 # Chỉ đồng bộ các đơn gần đây để giảm thời gian chạy. Dữ liệu các trang cũ
 # vẫn được giữ nguyên trong taobao_orders.json nhờ save_orders().
 MAX_ORDER_PAGES = 2
+INITIAL_SYNC_COMPLETED_KEY = "initial_sync_completed"
 PAGE_WAIT_MS = 2500
-
 
 # ============================================================
 # BROWSER
@@ -39,6 +39,16 @@ def create_browser(p):
     try:
         browser = p.chromium.launch(
             headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+            ],
         )
 
         context_kwargs = {
@@ -944,33 +954,74 @@ def click_next_order_page(page):
     return False
 
 
+def is_initial_sync_completed():
+    if not OUTPUT_FILE.exists():
+        return False
+
+    try:
+        payload = json.loads(
+            OUTPUT_FILE.read_text(encoding="utf-8")
+        )
+        return bool(
+            payload.get(INITIAL_SYNC_COMPLETED_KEY, False)
+        )
+    except Exception:
+        return False
+
+
 def scrape_all_order_pages(page):
     all_orders = []
     seen = set()
     existing_orders = load_existing_orders()
     visited_signatures = set()
 
-    for page_no in range(1, MAX_ORDER_PAGES + 1):
-        print(f"\n================ TRANG ĐƠN {page_no} ================")
+    initial_sync = not is_initial_sync_completed()
+
+    if initial_sync:
+        print("\n" + "=" * 60)
+        print("🟢 LẦN ĐẦU ĐỒNG BỘ TAOBAO")
+        print("🟢 Sẽ quét TOÀN BỘ lịch sử đơn hàng")
+        print("=" * 60)
+    else:
+        print("\n" + "=" * 60)
+        print("🔄 ĐỒNG BỘ TAOBAO")
+        print(f"🔄 Chỉ quét {MAX_ORDER_PAGES} trang mới nhất")
+        print("=" * 60)
+
+    page_no = 1
+
+    while True:
+        print(
+            f"\n================ TRANG ĐƠN {page_no} ================"
+        )
+
         try:
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.evaluate(
+                "window.scrollTo(0, document.body.scrollHeight)"
+            )
             page.wait_for_timeout(1200)
         except Exception:
             pass
 
         signature = get_page_signature(page)
+
         if signature and signature in visited_signatures:
             print("⚠️ Trang bị lặp → dừng phân trang.")
             break
+
         if signature:
             visited_signatures.add(signature)
 
         candidates = get_order_candidates(page)
+
         if not candidates:
             print("⚠️ Không có order card → dừng.")
             break
 
-        for local_i, container in enumerate(candidates, start=1):
+        for local_i, container in enumerate(
+            candidates,
+            start=1
+        ):
             try:
                 order = parse_order(
                     page,
@@ -978,21 +1029,53 @@ def scrape_all_order_pages(page):
                     f"{page_no}.{local_i}",
                     existing_orders,
                 )
+
                 key = order.get("order_id") or (
-                    order.get("shop_name"), order.get("order_date"), page_no, local_i
+                    order.get("shop_name"),
+                    order.get("order_date"),
+                    page_no,
+                    local_i,
                 )
+
                 if key in seen:
                     continue
+
                 seen.add(key)
                 all_orders.append(order)
-            except Exception as e:
-                print(f"[{page_no}.{local_i}] Parse error:", str(e)[:250])
 
-        print(f"✓ Trang {page_no}: {len(candidates)} order card; tổng đã đọc: {len(all_orders)}")
+            except Exception as e:
+                print(
+                    f"[{page_no}.{local_i}] Parse error:",
+                    str(e)[:250],
+                )
+
+        print(
+            f"✓ Trang {page_no}: "
+            f"{len(candidates)} order card; "
+            f"tổng đã đọc: {len(all_orders)}"
+        )
+
+        # Lần đầu: tiếp tục cho tới khi hết trang.
+        if initial_sync:
+            if not click_next_order_page(page):
+                print("✓ Đã đọc hết toàn bộ lịch sử Taobao.")
+                break
+
+            page_no += 1
+            continue
+
+        # Các lần sau: chỉ đọc 2 trang mới nhất.
+        if page_no >= MAX_ORDER_PAGES:
+            print(
+                f"✓ Đã đọc {MAX_ORDER_PAGES} trang mới nhất."
+            )
+            break
 
         if not click_next_order_page(page):
             print("✓ Không còn trang tiếp theo.")
             break
+
+        page_no += 1
 
     return all_orders
 
@@ -1008,11 +1091,23 @@ def scrape_orders(page):
 ========================================
 """)
 
-    save_debug_page(page, "orders_before_parse")
-    orders = scrape_all_order_pages(page)
-    print(f"\n✓ Đã nhận diện {len(orders)} ORDER CARD trên toàn bộ các trang đã đọc")
-    return orders
+    # Không chụp screenshot production vì Chromium Railway
+    # có thể crash khi render screenshot.
+    # save_debug_page(page, "orders_before_parse")
 
+    orders = scrape_all_order_pages(page)
+
+    print(
+        f"\n✓ Đã nhận diện {len(orders)} ORDER CARD "
+        f"trên toàn bộ các trang đã đọc"
+    )
+
+    if not orders:
+        raise RuntimeError(
+            "Taobao scrape trả về 0 đơn. Không cập nhật dữ liệu cũ."
+        )
+
+    return orders
 
 # ============================================================
 # SAVE / TOTALS
@@ -1033,53 +1128,90 @@ def calculate_totals(orders):
 
 def save_orders(orders):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
     old = load_existing_orders()
     merged = dict(old)
 
     for order in orders:
         oid = order.get("order_id")
+
         if not oid:
             continue
 
         previous = merged.get(str(oid), {})
 
-        if not order.get("tracking_number") and previous.get("tracking_number"):
+        # Giữ tracking cũ nếu Taobao lần này không lấy được.
+        if (
+            not order.get("tracking_number")
+            and previous.get("tracking_number")
+        ):
             order["tracking_number"] = previous["tracking_number"]
-        if previous.get("tracking_source") == "manual":
-            order["tracking_number"] = previous.get("tracking_number")
-            order["tracking_source"] = "manual"
-        elif order.get("tracking_number") and not order.get("tracking_source"):
-            order["tracking_source"] = previous.get("tracking_source") or "taobao"
-        if not order.get("delivered_to_china_at") and previous.get("delivered_to_china_at"):
-            order["delivered_to_china_at"] = previous["delivered_to_china_at"]
 
-        # Never downgrade a verified delivery. If current Taobao logistics is
-        # blocked/inaccessible, keep the previously verified delivery date/status.
-        if order.get("delivered_to_china_at") or previous.get("delivered_to_china_at"):
+        # Tracking nhập tay luôn được ưu tiên giữ lại.
+        if previous.get("tracking_source") == "manual":
+            order["tracking_number"] = previous.get(
+                "tracking_number"
+            )
+            order["tracking_source"] = "manual"
+
+        elif (
+            order.get("tracking_number")
+            and not order.get("tracking_source")
+        ):
+            order["tracking_source"] = (
+                previous.get("tracking_source")
+                or "taobao"
+            )
+
+        # Giữ ngày tới kho TQ cũ nếu lần này không lấy được.
+        if (
+            not order.get("delivered_to_china_at")
+            and previous.get("delivered_to_china_at")
+        ):
+            order["delivered_to_china_at"] = (
+                previous["delivered_to_china_at"]
+            )
+
+        # Không hạ trạng thái đã xác minh trước đó.
+        if (
+            order.get("delivered_to_china_at")
+            or previous.get("delivered_to_china_at")
+        ):
             order["status"] = "Đã giao"
+
         elif order.get("shipped_at"):
             order["status"] = "Đang vận chuyển"
-        elif order.get("status") == "Không xác minh được" and previous.get("status") in {"Đã giao", "Đang vận chuyển"}:
-            # Preserve a previously known state rather than replacing it with a false
-            # "Chưa giao". A later successful logistics check can update it.
+
+        elif (
+            order.get("status") == "Không xác minh được"
+            and previous.get("status")
+            in {"Đã giao", "Đang vận chuyển"}
+        ):
             order["status"] = previous["status"]
 
+        # Merge theo Order ID.
         merged[str(oid)] = order
 
     final_orders = list(merged.values())
+
     payload = {
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
-        # Chỉ thay đổi khi scraper Taobao thực sự chạy xong. Backend cập nhật
-        # vận chuyển Tuấn Vĩnh không được dùng mốc thời gian này.
-        "taobao_synced_at": datetime.now().isoformat(timespec="seconds"),
+        "updated_at": datetime.now().isoformat(
+            timespec="seconds"
+        ),
+        INITIAL_SYNC_COMPLETED_KEY: True,
         "orders": final_orders,
     }
+
     OUTPUT_FILE.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
-    return final_orders
 
+    return final_orders
 
 # ============================================================
 # MANUAL TRACKING
