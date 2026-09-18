@@ -36,7 +36,7 @@ def create_browser(p):
     try:
         context = p.chromium.launch_persistent_context(
             user_data_dir=str(PROFILE_DIR),
-            headless=False,
+            headless=True,
             # Dùng Chrome đã cài trên máy thay cho Chromium bundled của
             # Playwright, vì một số máy Windows chặn ms-playwright bằng policy.
             channel="chrome",
