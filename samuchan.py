@@ -22,7 +22,9 @@ PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGISTICS_WAIT_MS = 8000
-MAX_ORDER_PAGES = 200
+# Chỉ đồng bộ các đơn gần đây để giảm thời gian chạy. Dữ liệu các trang cũ
+# vẫn được giữ nguyên trong taobao_orders.json nhờ save_orders().
+MAX_ORDER_PAGES = 2
 PAGE_WAIT_MS = 2500
 
 
@@ -35,6 +37,9 @@ def create_browser(p):
         context = p.chromium.launch_persistent_context(
             user_data_dir=str(PROFILE_DIR),
             headless=False,
+            # Dùng Chrome đã cài trên máy thay cho Chromium bundled của
+            # Playwright, vì một số máy Windows chặn ms-playwright bằng policy.
+            channel="chrome",
             viewport={"width": 1440, "height": 1000},
             locale="zh-CN",
             timezone_id="Asia/Shanghai",
@@ -143,6 +148,14 @@ Sau khi đăng nhập xong quay lại PowerShell và nhấn ENTER.
 def open_my_orders(page):
     print("\n🛒 Đang mở '已买到的宝贝'...")
 
+    # Taobao thường hiển thị popup khuyến mãi phủ lên thanh điều hướng.
+    # Đóng popup trước khi click link đơn hàng.
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(1000)
+    except Exception:
+        pass
+
     selectors = [
         "text=已买到的宝贝",
         "text=已买到宝贝",
@@ -155,7 +168,11 @@ def open_my_orders(page):
             loc = page.locator(selector).first
             if loc.count() and loc.is_visible():
                 print("✓ Tìm thấy:", selector)
-                loc.click(timeout=10000)
+                try:
+                    loc.click(timeout=10000)
+                except Exception:
+                    # Một số lớp quảng cáo vẫn còn trong DOM dù đã đóng.
+                    loc.click(timeout=10000, force=True)
                 page.wait_for_timeout(5000)
 
                 if len(page.context.pages) > 1:

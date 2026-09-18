@@ -2,11 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import http from 'node:http'
+import { spawn } from 'node:child_process'
 
 const dataFile = resolve(process.env.SAMUCHAN_DATA_FILE || '../data/taobao_orders.json')
 
 function taobaoApiPlugin() {
+  let syncInProgress = false
+
   return {
     name: 'samuchan-taobao-api',
     configureServer(server) {
@@ -65,6 +67,64 @@ function taobaoApiPlugin() {
           }
         })
       })
+
+      // Dev mode must also work when only Vite is running (without Express :3001).
+      server.middlewares.use('/api/taobao/sync', (req, res) => {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.setHeader('Cache-Control', 'no-store')
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          return res.end(JSON.stringify({ success: false, message: 'Method Not Allowed' }))
+        }
+        if (syncInProgress) {
+          res.statusCode = 409
+          return res.end(JSON.stringify({ success: false, message: 'Đồng bộ Taobao đang chạy.' }))
+        }
+
+        syncInProgress = true
+        const projectRoot = resolve(process.cwd(), '..')
+        const child = spawn('python', [resolve(projectRoot, 'samuchan.py'), '--sync'], {
+          cwd: projectRoot,
+          windowsHide: true,
+          env: {
+            ...process.env,
+            PYTHONIOENCODING: 'utf-8',
+            PYTHONUTF8: '1',
+          },
+        })
+        let output = ''
+        child.stdout.on('data', (chunk) => { output += chunk.toString() })
+        child.stderr.on('data', (chunk) => { output += chunk.toString() })
+        child.once('error', (error) => {
+          syncInProgress = false
+          res.statusCode = 500
+          res.end(JSON.stringify({ success: false, message: `Không thể chạy samuchan.py: ${error.message}` }))
+        })
+        child.once('close', () => {
+          syncInProgress = false
+          if (res.writableEnded) return
+          if (child.exitCode !== 0) {
+            const detail = output
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .filter((line) => !line.includes('temporary directories cleanup'))
+              .filter((line) => !line.includes('<gracefully close'))
+              .filter((line) => !line.includes('<kill>') && !line.includes('<will force kill>'))
+              .slice(-12)
+              .join('\n') || `samuchan.py kết thúc với mã ${child.exitCode}`
+            res.statusCode = 500
+            return res.end(JSON.stringify({ success: false, message: 'Đồng bộ Taobao thất bại.', detail }))
+          }
+          try {
+            const payload = JSON.parse(readFileSync(dataFile, 'utf8'))
+            res.end(JSON.stringify({ success: true, taobao_synced_at: payload.taobao_synced_at || payload.updated_at, orders: Array.isArray(payload.orders) ? payload.orders.length : 0 }))
+          } catch (error) {
+            res.statusCode = 500
+            res.end(JSON.stringify({ success: false, message: error.message }))
+          }
+        })
+      })
     },
   }
 }
@@ -78,10 +138,6 @@ export default defineConfig({
   plugins: [react(), taobaoApiPlugin()],
   server: {
     proxy: {
-      '/api/taobao/sync': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
       // Chỉ chuyển tiếp API logistics; hai endpoint /api/taobao/* ở trên
       // được Vite phục vụ trực tiếp từ file dữ liệu local.
       '/api/tuanvinh': {

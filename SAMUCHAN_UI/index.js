@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
@@ -1797,47 +1798,674 @@ app.post(
 // ============================================================
 // GET TAOBAO ORDERS
 // ============================================================
+// ============================================================
+// TAOBAO SYNC + GET TAOBAO ORDERS
+// ============================================================
 
 let taobaoSyncInProgress = false;
 
-app.post('/api/taobao/sync', async (req, res) => {
-  if (taobaoSyncInProgress) {
-    return res.status(409).json({ success: false, message: 'Đồng bộ Taobao đang chạy.' });
-  }
 
-  taobaoSyncInProgress = true;
-  const script = path.join(PROJECT_ROOT, 'samuchan.py');
-  const child = spawn('python', [script, '--sync'], {
-    cwd: PROJECT_ROOT,
-    windowsHide: true,
-  });
-  let output = '';
-  child.stdout.on('data', (chunk) => { output += chunk.toString(); });
-  child.stderr.on('data', (chunk) => { output += chunk.toString(); });
+// ============================================================
+// PYTHON COMMAND
+// ============================================================
 
-  child.once('error', (error) => {
-    taobaoSyncInProgress = false;
-    res.status(500).json({ success: false, message: `Không thể chạy samuchan.py: ${error.message}` });
-  });
-  child.once('close', async (code) => {
-    taobaoSyncInProgress = false;
-    if (code !== 0) {
-      const detail = output
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line && !line.includes('temporary directories cleanup') && !line.includes('<gracefully close end>'))
-        .slice(-8)
-        .join('\n');
-      return res.status(500).json({ success: false, message: 'Đồng bộ Taobao thất bại.', detail });
+function getPythonCommand() {
+
+  const venvPython = path.join(
+    PROJECT_ROOT,
+    '.venv',
+    'Scripts',
+    'python.exe'
+  );
+
+  return venvPython;
+}
+
+
+// ============================================================
+// CLEAN PYTHON OUTPUT
+// ============================================================
+
+function summarizePythonOutput(output) {
+
+  return String(output || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+    .filter(
+      (line) =>
+        !line.includes('temporary directories cleanup')
+    )
+
+    .filter(
+      (line) =>
+        !line.includes('<gracefully close end>')
+    )
+
+    .filter(
+      (line) =>
+        !line.includes('<gracefully close start>')
+    )
+
+    .filter(
+      (line) =>
+        !line.includes('<kill>')
+    )
+
+    .filter(
+      (line) =>
+        !line.includes('<will force kill>')
+    )
+
+    .slice(-12)
+
+    .join('\n');
+}
+
+
+// ============================================================
+// RUN TAOBAO PYTHON SYNC
+// ============================================================
+
+function runTaobaoPythonSync() {
+
+  return new Promise(
+    (resolve, reject) => {
+
+      const script =
+        path.join(
+          PROJECT_ROOT,
+          'samuchan.py'
+        );
+
+      const venvPython =
+        getPythonCommand();
+
+
+      // --------------------------------------------------------
+      // Ưu tiên Python trong .venv
+      // Nếu không có thì dùng python trong PATH
+      // --------------------------------------------------------
+
+      const command =
+        existsSync(venvPython)
+          ? venvPython
+          : 'python';
+
+      const commandArgs = [
+        script,
+        '--sync'
+      ];
+
+
+      console.log('');
+      console.log(
+        '################################################'
+      );
+
+      console.log(
+        '[API] TAOBAO SYNC'
+      );
+
+      console.log(
+        '################################################'
+      );
+
+      console.log(
+        `[TAOBAO SYNC] Script: ${script}`
+      );
+
+      console.log(
+        `[TAOBAO SYNC] Python: ${command}`
+      );
+
+      console.log('');
+
+
+      let child;
+
+
+      // --------------------------------------------------------
+      // START PYTHON
+      // --------------------------------------------------------
+
+      try {
+
+        child =
+          spawn(
+            command,
+            commandArgs,
+            {
+              cwd:
+                PROJECT_ROOT,
+
+              windowsHide:
+                false,
+
+              stdio:
+                [
+                  'pipe',
+                  'pipe',
+                  'pipe'
+                ],
+
+              env:
+                {
+                  ...process.env,
+
+                  PYTHONIOENCODING:
+                    'utf-8'
+                }
+            }
+          );
+
+      } catch (error) {
+
+        reject(error);
+
+        return;
+      }
+
+
+      let output = '';
+
+      let settled = false;
+
+      let closeTimer = null;
+
+
+      // --------------------------------------------------------
+      // FINISH PROMISE ONCE
+      // --------------------------------------------------------
+
+      const finish =
+        (fn, value) => {
+
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+
+
+          if (closeTimer) {
+
+            clearTimeout(
+              closeTimer
+            );
+
+          }
+
+
+          fn(value);
+        };
+
+
+      // --------------------------------------------------------
+      // HANDLE PYTHON OUTPUT
+      // --------------------------------------------------------
+
+      const handleChunk =
+        (chunk) => {
+
+          const text =
+            chunk.toString();
+
+          output += text;
+
+
+          // Hiện log Python trên PowerShell
+          process.stdout.write(
+            text
+          );
+
+
+          // ----------------------------------------------------
+          // PYTHON MENU
+          // ----------------------------------------------------
+          //
+          // samuchan.py hiện tại:
+          //
+          // 1. Chạy lấy dữ liệu Taobao
+          // 2. Kiểm tra profile
+          // 3. Thoát
+          //
+          // ----------------------------------------------------
+
+          if (
+            /Chọn:\s*$/.test(text)
+          ) {
+
+            try {
+
+              child.stdin.write(
+                '1\n'
+              );
+
+              console.log(
+                '[TAOBAO SYNC] → Chọn 1: Chạy lấy dữ liệu Taobao.'
+              );
+
+            } catch {}
+
+          }
+
+
+          // ----------------------------------------------------
+          // TRACKING THIẾU
+          // ----------------------------------------------------
+          //
+          // Tracking thiếu sẽ được xử lý bằng UI SAMUCHAN.
+          // Không cần Python hỏi thủ công nữa.
+          //
+          // ----------------------------------------------------
+
+          if (
+            /Tracking number \(ENTER để bỏ qua\):\s*$/.test(
+              text
+            )
+          ) {
+
+            try {
+
+              child.stdin.write(
+                '\n'
+              );
+
+            } catch {}
+
+          }
+
+
+          // ----------------------------------------------------
+          // ĐÓNG BROWSER
+          // ----------------------------------------------------
+
+          if (
+            /ENTER để đóng browser\.\.\.\s*$/.test(
+              text
+            )
+          ) {
+
+            try {
+
+              child.stdin.write(
+                '\n'
+              );
+
+            } catch {}
+
+          }
+
+        };
+
+
+      child.stdout.on(
+        'data',
+        handleChunk
+      );
+
+      child.stderr.on(
+        'data',
+        handleChunk
+      );
+
+
+      // --------------------------------------------------------
+      // PROCESS ERROR
+      // --------------------------------------------------------
+
+      child.once(
+        'error',
+        (error) => {
+
+          finish(
+            reject,
+            error
+          );
+
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // PROCESS CLOSE
+      // --------------------------------------------------------
+
+      child.once(
+        'close',
+        async (
+          code,
+          signal
+        ) => {
+
+          // ----------------------------------------------------
+          // PYTHON FAILED
+          // ----------------------------------------------------
+
+          if (
+            code !== 0
+          ) {
+
+            const detail =
+              summarizePythonOutput(
+                output
+              );
+
+
+            finish(
+              reject,
+
+              new Error(
+                `samuchan.py kết thúc không thành công. ` +
+                `Code=${code ?? 'null'} ` +
+                `Signal=${signal || 'none'}` +
+                (
+                  detail
+                    ? `\n${detail}`
+                    : ''
+                )
+              )
+            );
+
+            return;
+          }
+
+
+          // ----------------------------------------------------
+          // PYTHON SUCCESS
+          // ----------------------------------------------------
+
+          try {
+
+            const payload =
+              await readTaobaoOrders();
+
+
+            const syncedAt =
+              new Date().toISOString();
+
+
+            // --------------------------------------------------
+            // Ghi riêng thời điểm đồng bộ Taobao
+            // --------------------------------------------------
+
+            payload.taobao_synced_at =
+              syncedAt;
+
+
+            await saveTaobaoOrders(
+              payload
+            );
+
+
+            console.log('');
+
+            console.log(
+              '================================================'
+            );
+
+            console.log(
+              '[TAOBAO SYNC] ✓ Đồng bộ Taobao thành công'
+            );
+
+            console.log(
+              `[TAOBAO SYNC] Orders: ${payload.orders.length}`
+            );
+
+            console.log(
+              `[TAOBAO SYNC] Synced at: ${syncedAt}`
+            );
+
+            console.log(
+              '================================================'
+            );
+
+            console.log('');
+
+
+            finish(
+              resolve,
+              {
+                success:
+                  true,
+
+                taobao_synced_at:
+                  syncedAt,
+
+                orders:
+                  payload.orders.length,
+
+                output
+              }
+            );
+
+          } catch (error) {
+
+            finish(
+              reject,
+              error
+            );
+
+          }
+
+        }
+      );
+
+
+      // --------------------------------------------------------
+      // TIMEOUT 15 PHÚT
+      // --------------------------------------------------------
+
+      closeTimer =
+        setTimeout(
+          () => {
+
+            try {
+
+              child.kill();
+
+            } catch {}
+
+
+            finish(
+              reject,
+
+              new Error(
+                'Đồng bộ Taobao quá 15 phút nên backend đã dừng tiến trình.'
+              )
+            );
+
+          },
+
+          15 * 60 * 1000
+        );
+
     }
+  );
+
+}
+
+
+// ============================================================
+// POST /api/taobao/sync
+// ============================================================
+
+app.post(
+  '/api/taobao/sync',
+  async (
+    req,
+    res
+  ) => {
+
+    // --------------------------------------------------------
+    // Không cho chạy 2 sync cùng lúc
+    // --------------------------------------------------------
+
+    if (
+      taobaoSyncInProgress
+    ) {
+
+      return res.status(
+        409
+      ).json({
+
+        success:
+          false,
+
+        message:
+          'Đồng bộ Taobao đang chạy. Không chạy thêm lần nữa.'
+
+      });
+
+    }
+
+
+    taobaoSyncInProgress =
+      true;
+
+
     try {
-      const payload = await readTaobaoOrders();
-      return res.json({ success: true, taobao_synced_at: payload.taobao_synced_at || payload.updated_at, orders: payload.orders.length });
+
+      console.log('');
+
+      console.log(
+        '################################################'
+      );
+
+      console.log(
+        '[API] BẮT ĐẦU ĐỒNG BỘ TAOBAO'
+      );
+
+      console.log(
+        '################################################'
+      );
+
+
+      const result =
+        await runTaobaoPythonSync();
+
+
+      // ------------------------------------------------------
+      // Đọc lại dữ liệu sau khi Python hoàn thành
+      // ------------------------------------------------------
+
+      const payload =
+        await readTaobaoOrders();
+
+
+      return res.json({
+
+        success:
+          true,
+
+        taobao_synced_at:
+          payload.taobao_synced_at ||
+          result.taobao_synced_at,
+
+        updated_at:
+          payload.updated_at,
+
+        orders:
+          payload.orders.length
+
+      });
+
+
     } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
+
+      console.error(
+        '[TAOBAO SYNC ERROR]',
+        error
+      );
+
+
+      return res.status(
+        500
+      ).json({
+
+        success:
+          false,
+
+        message:
+          error.message
+
+      });
+
+
+    } finally {
+
+      taobaoSyncInProgress =
+        false;
+
     }
-  });
-});
+
+  }
+);
+
+
+// ============================================================
+// GET TAOBAO SYNC STATUS
+// ============================================================
+
+app.get(
+  '/api/taobao/sync-status',
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const payload =
+        await readTaobaoOrders();
+
+
+      res.json({
+
+        success:
+          true,
+
+        running:
+          taobaoSyncInProgress,
+
+        updated_at:
+          payload.updated_at,
+
+        taobao_synced_at:
+          payload.taobao_synced_at ||
+          null,
+
+        orders:
+          payload.orders.length
+
+      });
+
+
+    } catch (error) {
+
+      res.status(
+        500
+      ).json({
+
+        success:
+          false,
+
+        message:
+          error.message
+
+      });
+
+    }
+
+  }
+);
+
+
+// ============================================================
+// GET TAOBAO ORDERS
+// ============================================================
 
 app.get(
   '/api/taobao/orders',
@@ -1845,11 +2473,15 @@ app.get(
     req,
     res
   ) => {
+
     try {
+
       const payload =
         await readTaobaoOrders();
 
+
       res.json({
+
         success:
           true,
 
@@ -1860,25 +2492,33 @@ app.get(
           payload.taobao_synced_at,
 
         orders:
-          payload.orders,
+          payload.orders
+
       });
 
+
     } catch (error) {
+
       console.error(
         '[TAOBAO ORDERS ERROR]',
         error
       );
 
+
       res.status(
         500
       ).json({
+
         success:
           false,
 
         message:
-          error.message,
+          error.message
+
       });
+
     }
+
   }
 );
 

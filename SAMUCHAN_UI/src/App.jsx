@@ -584,6 +584,17 @@ function SkuMasterPage({
   orders,
   skuLinks,
   setSkuLinks,
+  exchangeRate,
+  formatVnd,
+  selectedYear,
+  selectedMonth,
+  selectedDay,
+  availableYears,
+  availableMonths,
+  availableDays,
+  onYearChange,
+  onMonthChange,
+  onDayChange,
 }) {
   const [editing, setEditing] = useState(null)
   const [skuId, setSkuId] = useState('')
@@ -736,6 +747,7 @@ function SkuMasterPage({
   const getPurchaseStats = (masterId) => {
     let quantity = 0
     let totalCny = 0
+    let totalShipping = 0
     let itemCount = 0
 
     orders.forEach((order) => {
@@ -753,6 +765,8 @@ function SkuMasterPage({
 
         quantity += qty
         totalCny += qty * price
+        const orderValue = order.items.reduce((sum, current) => sum + Number(current.quantity || 0) * Number(current.unit_price_cny || 0), 0)
+        if (orderValue > 0) totalShipping += calculateShippingCost(order.tuanvinh?.weight_kg) * ((qty * price) / orderValue)
         itemCount += 1
       })
     })
@@ -760,6 +774,10 @@ function SkuMasterPage({
     return {
       quantity,
       totalCny,
+      totalVnd: totalCny * Number(exchangeRate || 0),
+      totalShipping,
+      averageVnd: quantity > 0 ? (totalCny / quantity) * Number(exchangeRate || 0) : 0,
+      averageShipping: quantity > 0 ? totalShipping / quantity : 0,
       itemCount,
       averageCost:
         quantity > 0
@@ -1052,6 +1070,17 @@ VD:
                         </strong>
                       </div>
 
+                      <div>
+                        <small>Tiền Việt Nam</small>
+                        <strong className="sku-vnd">{exchangeRate > 0 ? formatVnd(stats.totalVnd) : 'Nhập tỷ giá'}</strong>
+                        <small>{exchangeRate > 0 ? `${formatVnd(stats.averageVnd)} / cái` : ''}</small>
+                      </div>
+                      <div>
+                        <small>Phí vận chuyển</small>
+                        <strong className="sku-vnd">{stats.totalShipping > 0 ? formatVnd(stats.totalShipping) : '—'}</strong>
+                        <small>{stats.totalShipping > 0 ? `${formatVnd(stats.averageShipping)} / cái` : ''}</small>
+                      </div>
+
                     </div>
 
                   </div>
@@ -1103,6 +1132,11 @@ VD:
               SKU Taobao trùng alias sẽ tự nhận diện.
               Nếu chưa đúng, bạn có thể gán SKU thủ công.
             </p>
+          </div>
+          <div className="sku-date-filters">
+            <select value={selectedYear} onChange={(e) => onYearChange(e.target.value)}><option value="Tất cả">Tất cả năm</option>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select>
+            <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)}><option value="Tất cả">Tất cả tháng</option>{availableMonths.map((month) => <option key={month} value={month}>Tháng {Number(month)}</option>)}</select>
+            <select value={selectedDay} onChange={(e) => onDayChange(e.target.value)}><option value="Tất cả">Tất cả ngày</option>{availableDays.map((day) => <option key={day} value={day}>Ngày {Number(day)}</option>)}</select>
           </div>
         </div>
 
@@ -1240,6 +1274,77 @@ VD:
     </main>
   )
 }
+
+function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, setSales, skuLinks }) {
+  const [editingSale, setEditingSale] = useState(null)
+  const [form, setForm] = useState({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
+
+  useEffect(() => { localStorage.setItem('samuchan_shop_sales_v1', JSON.stringify(sales)) }, [sales])
+
+  const costBySku = (id) => {
+    let qty = 0; let total = 0; let purchaseShipping = 0
+    orders.forEach((order) => order.items.forEach((item, index) => {
+      const linked = skuLinks[purchaseItemKey(order, index)] || getAutoMatchedSku(item, skuMaster)?.id
+      if (linked !== id) return
+      const n = Number(item.quantity || 0); qty += n; total += n * Number(item.unit_price_cny || 0)
+      purchaseShipping += calculateShippingCost(order.tuanvinh?.weight_kg) * (n / Math.max(1, order.items.reduce((sum, current) => sum + Number(current.quantity || 0), 0)))
+    }))
+    return qty ? (total / qty) * Number(exchangeRate || 0) + (purchaseShipping / qty) : 0
+  }
+
+  const addSale = () => {
+    const quantity = Number(form.quantity || 0); const revenue = Number(form.revenue || 0)
+    if (!form.sku || quantity <= 0 || revenue < 0) return
+    const record = { id: editingSale || Date.now(), ...form, quantity, revenue, shipping: Number(form.shipping || 0), date: new Date().toISOString() }
+    setSales(editingSale ? sales.map((sale) => sale.id === editingSale ? record : sale) : [...sales, record])
+    setEditingSale(null)
+    setForm({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
+  }
+
+  const editSale = (sale) => { setForm({ sku: sale.sku, quantity: sale.quantity, revenue: sale.revenue, shipping: sale.shipping, purchaseOrderId: sale.purchaseOrderId || '' }); setEditingSale(sale.id) }
+
+  const rows = skuMaster.map((sku) => {
+    const list = sales.filter((sale) => sale.sku === sku.id)
+    const quantity = list.reduce((n, sale) => n + Number(sale.quantity || 0), 0)
+    const revenue = list.reduce((n, sale) => n + Number(sale.revenue || 0), 0)
+    const shipping = list.reduce((n, sale) => { const order = orders.find((x) => String(x.order_id) === String(sale.purchaseOrderId)); const itemQty = order?.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0; const purchaseShipping = order ? calculateShippingCost(order.tuanvinh?.weight_kg) * Number(sale.quantity || 0) / Math.max(1, itemQty) : 0; return n + Number(sale.shipping || 0) + purchaseShipping }, 0)
+    const cost = quantity * costBySku(sku.id)
+    return { ...sku, quantity, revenue, shipping, cost, profit: revenue - cost - shipping }
+  }).filter((row) => row.quantity || sales.length === 0)
+
+  return <main className="dashboard">
+    <section className="page-heading"><div><p className="eyebrow">SAMU.SHOP</p><h1>Doanh thu & lợi nhuận</h1><p className="heading-description">Theo dõi số lượng bán, doanh thu, giá vốn và lợi nhuận theo SKU.</p></div></section>
+    <section className="orders-card shop-entry-card"><h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2><div className="shop-entry-grid"><select value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}><option value="">Chọn SKU</option>{skuMaster.map((sku) => <option key={sku.id} value={sku.id}>{sku.id} — {sku.name}</option>)}</select><select value={form.purchaseOrderId} onChange={(e) => setForm({ ...form, purchaseOrderId: e.target.value })}><option value="">Chọn Order Purchase</option>{orders.map((order) => <option key={order.order_id} value={order.order_id}>#{order.order_id}</option>)}</select><input type="number" min="1" placeholder="Số lượng" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /><input type="number" min="0" placeholder="Doanh thu (₫)" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /><input type="number" min="0" placeholder="Phí VC Việt Nam (₫)" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: e.target.value })} /><button type="button" onClick={addSale}>{editingSale ? 'Lưu sửa' : '+ Thêm'}</button></div></section>
+    <section className="orders-card shop-table"><div className="shop-table-head"><strong>Ảnh / SKU</strong><strong>Đã bán</strong><strong>Doanh thu</strong><strong>Giá vốn</strong><strong>Phí VC VN</strong><strong>Lợi nhuận</strong><strong>Thao tác</strong></div>{rows.map((row) => <div className="shop-table-row" key={row.id}><strong className="shop-product"><span className="shop-product-image">{row.image ? <img src={row.image} alt={row.name} /> : '🛍️'}</span><span>{row.id}<small>{row.name}</small></span></strong><span>{row.quantity}</span><span>{formatVnd(row.revenue)}</span><span>{row.cost ? formatVnd(row.cost) : 'Chưa có giá vốn'}</span><span>{formatVnd(row.shipping)}</span><strong className={row.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(row.profit)}</strong><button type="button" className="shop-edit" onClick={() => editSale(sales.find((sale) => sale.sku === row.id))}>Sửa</button></div>)}</section>
+  </main>
+}
+
+function DashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, skuLinks }) {
+  const data = skuMaster.map((sku) => { const items = sales.filter((x) => x.sku === sku.id); const qty = items.reduce((n, x) => n + Number(x.quantity || 0), 0); const revenue = items.reduce((n, x) => n + Number(x.revenue || 0), 0); const shipping = items.reduce((n, x) => n + Number(x.shipping || 0), 0); let purchaseQty = 0; let purchaseCny = 0; orders.forEach((order) => order.items.forEach((item, index) => { if ((skuLinks[purchaseItemKey(order, index)] || getAutoMatchedSku(item, skuMaster)?.id) === sku.id) { const n = Number(item.quantity || 0); purchaseQty += n; purchaseCny += n * Number(item.unit_price_cny || 0) } })); const cost = purchaseQty ? qty * (purchaseCny / purchaseQty) * Number(exchangeRate || 0) : 0; return { ...sku, qty, revenue, shipping, cost, profit: revenue - cost - shipping } }).filter((x) => x.qty)
+  data.forEach((row) => {
+    const purchaseShipping = orders.reduce((sum, order) => {
+      const allQty = order.items.reduce((n, item) => n + Number(item.quantity || 0), 0)
+      const skuQty = order.items.filter((item) => getAutoMatchedSku(item, skuMaster)?.id === row.id).reduce((n, item) => n + Number(item.quantity || 0), 0)
+      const inventoryQty = orders.reduce((grandTotal, currentOrder) => grandTotal + currentOrder.items.reduce((n, item) => n + Number(item.quantity || 0), 0), 0)
+      return sum + (allQty && inventoryQty ? calculateShippingCost(order.tuanvinh?.weight_kg) * skuQty / allQty * row.qty / inventoryQty : 0)
+    }, 0)
+    row.shipping += purchaseShipping
+    row.profit -= purchaseShipping
+  })
+  const inventoryQty = orders.reduce((sum, order) => sum + order.items.reduce((n, item) => n + Number(item.quantity || 0), 0), 0)
+  const soldQty = data.reduce((sum, row) => sum + row.qty, 0)
+  const purchaseShippingTotal = inventoryQty ? orders.reduce((sum, order) => sum + calculateShippingCost(order.tuanvinh?.weight_kg), 0) * soldQty / inventoryQty : 0
+  const total = (key) => {
+    const value = data.reduce((n, x) => n + x[key], 0)
+    if (key === 'shipping') return value + purchaseShippingTotal
+    if (key === 'profit') return value - purchaseShippingTotal
+    return value
+  }
+  const totalShipping = total('shipping') + purchaseShippingTotal
+  const totalProfit = total('profit') - purchaseShippingTotal
+  const max = Math.max(1, ...data.map((x) => x.revenue))
+  return <main className="dashboard"><section className="page-heading"><div><p className="eyebrow">DASHBOARD</p><h1>Doanh số & lợi nhuận</h1><p className="heading-description">Tổng quan hiệu quả bán hàng theo SKU.</p></div></section><div className="dashboard-cards"><div><span>Sản phẩm bán</span><strong>{total('qty')}</strong></div><div><span>Doanh thu</span><strong>{formatVnd(total('revenue'))}</strong></div><div><span>Phí vận chuyển</span><strong>{formatVnd(total('shipping'))}</strong></div><div><span>Lợi nhuận</span><strong className="profit-positive">{formatVnd(total('profit'))}</strong></div></div><section className="orders-card dashboard-chart"><h2>Doanh thu theo SKU</h2>{data.length ? data.map((row) => <div className="dashboard-bar-row" key={row.id}><strong>{row.id}</strong><div><span className="bar revenue-bar" style={{ width: `${row.revenue / max * 100}%` }} /><span className="bar profit-bar" style={{ width: `${Math.max(0, row.profit) / max * 100}%` }} /></div><b>{formatVnd(row.revenue)}</b></div>) : <div className="empty-state">Chưa có dữ liệu bán hàng.</div>}<div className="chart-legend"><span className="legend-revenue" /> Doanh thu <span className="legend-profit" /> Lợi nhuận</div></section></main>
+}
 function ImageViewer({ image, name, onClose }) {
   return (
     <div className="image-viewer-backdrop" onClick={onClose}>
@@ -1270,6 +1375,10 @@ function App() {
   const [skuLinks, setSkuLinks] = useState(() =>
     loadSkuLinks()
   )
+  const [shopSales, setShopSales] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('samuchan_shop_sales_v1') || '[]') } catch { return [] }
+  })
+  useEffect(() => { localStorage.setItem('samuchan_shop_sales_v1', JSON.stringify(shopSales)) }, [shopSales])
 
   useEffect(() => {
     saveSkuMaster(skuMaster)
@@ -1501,6 +1610,10 @@ function App() {
     setSelectedDay('Tất cả')
   }
 
+  const handleDayChange = (value) => {
+    setSelectedDay(value)
+  }
+
   const filteredOrders = useMemo(() => {
     const keyword = search.trim().toLowerCase()
     return orders.filter((order) => {
@@ -1611,26 +1724,23 @@ function App() {
   <SkuMasterPage
     skuMaster={skuMaster}
     setSkuMaster={setSkuMaster}
-    orders={orders}
+    orders={filteredOrders}
     skuLinks={skuLinks}
     setSkuLinks={setSkuLinks}
+    exchangeRate={exchangeRate}
+    formatVnd={formatVnd}
+    selectedYear={selectedYear}
+    selectedMonth={selectedMonth}
+    selectedDay={selectedDay}
+    availableYears={availableYears}
+    availableMonths={availableMonths}
+    availableDays={availableDays}
+    onYearChange={handleYearChange}
+    onMonthChange={handleMonthChange}
+    onDayChange={handleDayChange}
   />
 ) : activeTab === 'shop' ? (
-  <main className="dashboard">
-    <section className="page-heading">
-      <div>
-        <p className="eyebrow">SAMU.SHOP</p>
-        <h1>SAMU.shop</h1>
-        <p className="heading-description">
-          Quản lý đơn bán hàng của SAMUCHAN.
-        </p>
-      </div>
-    </section>
-
-    <div className="empty-state">
-      SAMU.shop sẽ kết nối với SKU Master ở bước tiếp theo.
-    </div>
-  </main>
+  <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} setSales={setShopSales} skuLinks={skuLinks} />
 ) : (
   <main className="dashboard">
         <section className="page-heading">
@@ -1657,23 +1767,16 @@ function App() {
                   placeholder="3945"
                   aria-label="Tỷ giá CNY sang VND"
                 />
-                <small>VND / 1 CNY</small>
               </div>
             </div>
           </div>
-        </section>
-
-        <section className="vnd-summary-row">
           <div className="summary-card converted-card">
             <div className="summary-icon converted">₫</div>
-            <div><span>Tổng tiền Việt Nam</span><strong>{exchangeRate > 0 ? formatVnd(totalVnd) : 'Chưa nhập tỷ giá'}</strong><small className="conversion-note">{exchangeRate > 0 ? `¥${totalCny.toLocaleString('en-US', { minimumFractionDigits: 2 })} × ${exchangeRate.toLocaleString('vi-VN')}` : 'Nhập tỷ giá CNY → VND ở card bên cạnh'}</small></div>
+            <div><span>Tổng tiền Việt Nam</span><strong>{exchangeRate > 0 ? formatVnd(totalVnd) : 'Chưa nhập tỷ giá'}</strong></div>
           </div>
-        </section>
-
-        <section className="vnd-summary-row shipping-summary-row">
           <div className="summary-card converted-card shipping-summary-card">
             <div className="summary-icon shipping">🚚</div>
-            <div><span>Tổng phí vận chuyển</span><strong>{totalShippingVnd > 0 ? formatVnd(totalShippingVnd) : 'Chưa có dữ liệu'}</strong><small className="conversion-note">Tính theo cân nặng Tuấn Vĩnh: 22k / 21k / 20k mỗi kg</small></div>
+            <div><span>Tổng phí vận chuyển</span><strong>{totalShippingVnd > 0 ? formatVnd(totalShippingVnd) : 'Chưa có dữ liệu'}</strong></div>
           </div>
         </section>
 
