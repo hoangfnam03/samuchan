@@ -39,7 +39,7 @@ def create_browser(p):
             headless=True,
             # Dùng Chrome đã cài trên máy thay cho Chromium bundled của
             # Playwright, vì một số máy Windows chặn ms-playwright bằng policy.
-            channel="chrome",
+           
             viewport={"width": 1440, "height": 1000},
             locale="zh-CN",
             timezone_id="Asia/Shanghai",
