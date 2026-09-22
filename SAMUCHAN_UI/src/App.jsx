@@ -1731,15 +1731,15 @@ useEffect(() => {
     if (!tracking) return null
     try {
       const response = await fetch(
-        `/api/tuanvinh/track/${encodeURIComponent(tracking)}?force=1`,
-        {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            'CacLOAD SKU FROM RAILWAYhe-Control': 'no-cache',
-          },
-        }
-      )
+  `/api/tuanvinh/track/${encodeURIComponent(tracking)}?force=1`,
+  {
+    method: 'GET',
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache',
+    },
+  }
+)
 
       const payload = await readApiJson(response)
 
