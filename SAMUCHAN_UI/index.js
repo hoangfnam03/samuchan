@@ -2961,6 +2961,256 @@ app.post(
     }
   }
 );
+// ============================================================
+// SKU MASTER
+// ============================================================
+
+const SKU_MASTER_FILE = path.join(
+  DATA_DIR,
+  'sku_master.json'
+);
+
+const SKU_LINKS_FILE = path.join(
+  DATA_DIR,
+  'sku_links.json'
+);
+
+// ---------- Read JSON safely ----------
+async function readJsonFile(file, fallback) {
+  try {
+    const raw = await fs.readFile(
+      file,
+      'utf-8'
+    );
+
+    const data = JSON.parse(raw);
+
+    return data;
+  } catch {
+    return fallback;
+  }
+}
+
+// ---------- Write JSON safely ----------
+async function writeJsonFile(file, data) {
+  await fs.writeFile(
+    file,
+    JSON.stringify(
+      data,
+      null,
+      2
+    ),
+    'utf-8'
+  );
+}
+
+// ============================================================
+// SKU MASTER API
+// ============================================================
+
+// GET all SKU Master
+app.get(
+  '/api/sku/master',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const data =
+        await readJsonFile(
+          SKU_MASTER_FILE,
+          []
+        );
+
+      res.json({
+        success: true,
+        skus: Array.isArray(data)
+          ? data
+          : [],
+      });
+
+    } catch (error) {
+      console.error(
+        '[SKU MASTER GET ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// SAVE entire SKU Master
+app.post(
+  '/api/sku/master',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const skus =
+        Array.isArray(req.body?.skus)
+          ? req.body.skus
+          : [];
+
+      await writeJsonFile(
+        SKU_MASTER_FILE,
+        skus
+      );
+
+      res.json({
+        success: true,
+        skus,
+      });
+
+    } catch (error) {
+      console.error(
+        '[SKU MASTER SAVE ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// DELETE SKU Master
+app.delete(
+  '/api/sku/master/:id',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const id =
+        String(
+          req.params.id || ''
+        ).trim();
+
+      const current =
+        await readJsonFile(
+          SKU_MASTER_FILE,
+          []
+        );
+
+      const next =
+        Array.isArray(current)
+          ? current.filter(
+              (sku) =>
+                String(sku?.id || '') !== id
+            )
+          : [];
+
+      await writeJsonFile(
+        SKU_MASTER_FILE,
+        next
+      );
+
+      res.json({
+        success: true,
+        skus: next,
+      });
+
+    } catch (error) {
+      console.error(
+        '[SKU MASTER DELETE ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// ============================================================
+// SKU LINKS API
+// ============================================================
+
+// GET Purchase → SKU links
+app.get(
+  '/api/sku/links',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const data =
+        await readJsonFile(
+          SKU_LINKS_FILE,
+          {}
+        );
+
+      res.json({
+        success: true,
+        links:
+          data &&
+          typeof data === 'object' &&
+          !Array.isArray(data)
+            ? data
+            : {},
+      });
+
+    } catch (error) {
+      console.error(
+        '[SKU LINKS GET ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// SAVE Purchase → SKU links
+app.post(
+  '/api/sku/links',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const links =
+        req.body?.links &&
+        typeof req.body.links === 'object' &&
+        !Array.isArray(req.body.links)
+          ? req.body.links
+          : {};
+
+      await writeJsonFile(
+        SKU_LINKS_FILE,
+        links
+      );
+
+      res.json({
+        success: true,
+        links,
+      });
+
+    } catch (error) {
+      console.error(
+        '[SKU LINKS SAVE ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
 
 // ============================================================
 // HEALTH
