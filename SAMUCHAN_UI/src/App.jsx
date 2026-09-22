@@ -1755,7 +1755,21 @@ useEffect(() => {
         payload?.data ||
         payload?.tuanvinh ||
         payload
+      const hasExitedVietnam =
+  Array.isArray(tv?.history) &&
+  tv.history.some((item) => {
+    const text =
+      typeof item === 'string'
+        ? item
+        : String(
+            item?.status ||
+            item?.name ||
+            item?.text ||
+            ''
+          )
 
+    return text.includes('Xuất kho Việt Nam')
+  })
       if (!tv || tv.success === false) {
         throw new Error(
           tv?.message ||
@@ -1764,26 +1778,34 @@ useEffect(() => {
       }
 
       setOrders((current) =>
-        current.map((item) =>
-          item.order_id === order.order_id
-            ? {
-                ...item,
-                tuanvinh: tv,
-                status: tv.current_status || item.status,
-              }
-            : item
-        )
-      )
+  current.map((item) =>
+    item.order_id === order.order_id
+      ? {
+          ...item,
+          tuanvinh: tv,
+          tuanvinh_locked:
+            item.tuanvinh_locked === true ||
+            hasExitedVietnam,
+          status:
+            tv.current_status || item.status,
+        }
+      : item
+  )
+)
 
       setSelectedOrder((current) =>
-        current && current.order_id === order.order_id
-          ? {
-              ...current,
-              tuanvinh: tv,
-              status: tv.current_status || current.status,
-            }
-          : current
-      )
+  current && current.order_id === order.order_id
+    ? {
+        ...current,
+        tuanvinh: tv,
+        tuanvinh_locked:
+          current.tuanvinh_locked === true ||
+          hasExitedVietnam,
+        status:
+          tv.current_status || current.status,
+      }
+    : current
+)
 
       return tv
     } catch (err) {
@@ -1799,7 +1821,19 @@ useEffect(() => {
     // Lấy logistics cho mọi đơn có tracking. Trước đây điều kiện ngày đặt
     // hàng làm các đơn cũ hơn mốc cutoff không bao giờ nhận được cân nặng và
     // lịch sử, dù API Tuấn Vĩnh đã có dữ liệu.
-    const targets = sourceOrders.filter((order) => order.tracking_number)
+    const targets = sourceOrders.filter((order) => {
+  if (!order.tracking_number) {
+    return false
+  }
+
+  // Tracking đã từng Xuất kho Việt Nam
+  // thì không tự động tra lại nữa.
+  if (order.tuanvinh_locked === true) {
+    return false
+  }
+
+  return true
+})
     if (!targets.length) return
 
     setLogisticsLoading(true)

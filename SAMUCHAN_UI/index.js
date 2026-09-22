@@ -1526,6 +1526,24 @@ async function saveTuanVinhToOrder(
     return false;
   }
 
+  const hasExitedVietnam =
+    Array.isArray(tv?.history) &&
+    tv.history.some((item) => {
+      const text =
+        typeof item === 'string'
+          ? item
+          : String(
+              item?.status ||
+              item?.name ||
+              item?.text ||
+              ''
+            );
+
+      return text.includes(
+        'Xuất kho Việt Nam'
+      );
+    });
+
   const payload =
     await readTaobaoOrders();
 
@@ -1558,6 +1576,10 @@ async function saveTuanVinhToOrder(
 
           tuanvinh:
             tv,
+
+          tuanvinh_locked:
+            order.tuanvinh_locked === true ||
+            hasExitedVietnam,
         };
 
         if (
@@ -1581,6 +1603,12 @@ async function saveTuanVinhToOrder(
     console.log(
       `[TUẤN VĨNH] ✓ Đã ghi dữ liệu vào taobao_orders.json: ${tracking}`
     );
+
+    if (hasExitedVietnam) {
+      console.log(
+        `[TUẤN VĨNH] 🔒 Tracking ${tracking} đã Xuất kho Việt Nam → khóa tự động refresh`
+      );
+    }
   } else {
     console.log(
       `[TUẤN VĨNH] ⚠ Không tìm thấy order có tracking: ${tracking}`
@@ -1589,7 +1617,6 @@ async function saveTuanVinhToOrder(
 
   return changed;
 }
-
 // ============================================================
 // GET ONE TRACKING
 // ============================================================
