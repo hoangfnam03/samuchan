@@ -1901,9 +1901,9 @@ useEffect(() => {
   const skuPurchaseOrders = useMemo(() => {
     return orders.filter((order) => {
       const orderDate = dateKey(order.order_date)
-      const matchesYear = selectedYear === 'Táº¥t cáº£' || orderDate.startsWith(`${selectedYear}-`)
-      const matchesMonth = selectedMonth === 'Táº¥t cáº£' || orderDate.slice(5, 7) === selectedMonth
-      const matchesDay = selectedDay === 'Táº¥t cáº£' || orderDate.slice(8, 10) === selectedDay
+      const matchesYear = selectedYear === 'Tất cả' || orderDate.startsWith(`${selectedYear}-`)
+      const matchesMonth = selectedMonth === 'Tất cả' || orderDate.slice(5, 7) === selectedMonth
+      const matchesDay = selectedDay === 'Tất cả' || orderDate.slice(8, 10) === selectedDay
 
       return matchesYear && matchesMonth && matchesDay
     })
@@ -2013,7 +2013,7 @@ useEffect(() => {
     onYearChange={handleYearChange}
     onMonthChange={handleMonthChange}
     onDayChange={handleDayChange}
-    onRefreshPurchases={loadOrders}
+    onRefreshPurchases={syncAll}
   />
 ) : activeTab === 'shop' ? (
   <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} setSales={setShopSales} skuLinks={skuLinks} />
