@@ -1301,7 +1301,7 @@ VD:
               disabled={purchaseRefreshing}
             >
               <span>↻</span>
-              {purchaseRefreshing ? 'Đang cập nhật...' : 'Cập nhật Taobao'}
+              {purchaseRefreshing ? 'Đang cập nhật...' : 'Cập nhật'}
             </button>
             <select value={selectedYear} onChange={(e) => onYearChange(e.target.value)}><option value="Tất cả">Tất cả năm</option>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select>
             <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)}><option value="Tất cả">Tất cả tháng</option>{availableMonths.map((month) => <option key={month} value={month}>Tháng {Number(month)}</option>)}</select>
@@ -2013,7 +2013,7 @@ useEffect(() => {
     onYearChange={handleYearChange}
     onMonthChange={handleMonthChange}
     onDayChange={handleDayChange}
-    onRefreshPurchases={syncAll}
+    onRefreshPurchases={loadOrders}
   />
 ) : activeTab === 'shop' ? (
   <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} setSales={setShopSales} skuLinks={skuLinks} />
