@@ -1301,7 +1301,7 @@ VD:
               disabled={purchaseRefreshing}
             >
               <span>↻</span>
-              {purchaseRefreshing ? 'Đang cập nhật...' : 'Cập nhật'}
+              {purchaseRefreshing ? 'Đang cập nhật...' : 'Cập nhật Taobao'}
             </button>
             <select value={selectedYear} onChange={(e) => onYearChange(e.target.value)}><option value="Tất cả">Tất cả năm</option>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select>
             <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)}><option value="Tất cả">Tất cả tháng</option>{availableMonths.map((month) => <option key={month} value={month}>Tháng {Number(month)}</option>)}</select>
@@ -1898,6 +1898,17 @@ useEffect(() => {
     })
   }, [orders, activeFilter, search, selectedYear, selectedMonth, selectedDay])
 
+  const skuPurchaseOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const orderDate = dateKey(order.order_date)
+      const matchesYear = selectedYear === 'Táº¥t cáº£' || orderDate.startsWith(`${selectedYear}-`)
+      const matchesMonth = selectedMonth === 'Táº¥t cáº£' || orderDate.slice(5, 7) === selectedMonth
+      const matchesDay = selectedDay === 'Táº¥t cáº£' || orderDate.slice(8, 10) === selectedDay
+
+      return matchesYear && matchesMonth && matchesDay
+    })
+  }, [orders, selectedYear, selectedMonth, selectedDay])
+
   const groupedOrders = useMemo(() => {
     const map = new Map()
     filteredOrders.forEach((order) => {
@@ -1988,7 +1999,7 @@ useEffect(() => {
   <SkuMasterPage
     skuMaster={skuMaster}
     setSkuMaster={setSkuMaster}
-    orders={filteredOrders}
+    orders={skuPurchaseOrders}
     skuLinks={skuLinks}
     setSkuLinks={setSkuLinks}
     exchangeRate={exchangeRate}
@@ -2002,7 +2013,7 @@ useEffect(() => {
     onYearChange={handleYearChange}
     onMonthChange={handleMonthChange}
     onDayChange={handleDayChange}
-    onRefreshPurchases={loadOrders}
+    onRefreshPurchases={syncAll}
   />
 ) : activeTab === 'shop' ? (
   <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} setSales={setShopSales} skuLinks={skuLinks} />
