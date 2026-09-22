@@ -1264,6 +1264,22 @@ def save_orders(orders):
         ):
             order["status"] = previous["status"]
 
+        previous_tracking = previous.get("tracking_number")
+        current_tracking = order.get("tracking_number")
+
+        # Giữ dữ liệu Tuấn Vĩnh đã lưu nếu tracking không đổi. Sync Taobao
+        # không nên xóa lịch sử/cân nặng; chỉ nút update Tuấn Vĩnh mới làm mới.
+        if (
+            current_tracking
+            and previous_tracking
+            and str(current_tracking).strip() == str(previous_tracking).strip()
+        ):
+            if previous.get("tuanvinh") and not order.get("tuanvinh"):
+                order["tuanvinh"] = previous["tuanvinh"]
+
+            if previous.get("tuanvinh_locked") is not None:
+                order["tuanvinh_locked"] = previous["tuanvinh_locked"]
+
         # Merge theo Order ID.
         merged[str(oid)] = order
 

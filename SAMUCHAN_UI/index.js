@@ -2668,65 +2668,28 @@ app.post(
       };
 
       // ========================================================
-      // QUAN TRỌNG:
-      // XÓA CACHE CỦA TRACKING MỚI
-      // ========================================================
-
-      await deleteCache(
-        tracking
-      );
-
-      // ========================================================
-      // TRA TUẤN VĨNH NGAY
+      // CHI LUU TRACKING
       // ========================================================
 
       let tuanvinh =
+        order.tuanvinh ||
         null;
 
-      try {
-        const result =
-          await trackTuanVinh(
-            tracking,
-            {
-              forceRefresh:
-                true,
-            }
-          );
-
-        if (
-          result?.success
-        ) {
-          tuanvinh =
-            result;
-
-          order.tuanvinh =
-            result;
-
-          if (
-            result.current_status
-          ) {
-            order.status =
-              result.current_status;
-          }
-
-          console.log(
-            '[SAVE TRACKING] ✓ Tuấn Vĩnh OK'
-          );
-
-        } else {
-          console.log(
-            '[SAVE TRACKING] ⚠ Tuấn Vĩnh không có dữ liệu:',
-            result?.message
-          );
-        }
-
-      } catch (
-        error
-      ) {
-        console.error(
-          '[SAVE TRACKING] Tuấn Vĩnh ERROR:',
-          error.message
+      // Neu doi sang tracking khac thi bo du lieu Tuan Vinh cu de tranh
+      // hien thi lich su cua ma van don truoc do. Nguoi dung se bam update
+      // rieng khi muon lay trang thai Tuan Vinh moi nhat.
+      const previousTracking =
+        cleanTracking(
+          payload.orders[index]?.tracking_number
         );
+
+      if (
+        previousTracking &&
+        previousTracking !== tracking
+      ) {
+        delete order.tuanvinh;
+        delete order.tuanvinh_locked;
+        tuanvinh = null;
       }
 
       // ========================================================
@@ -2759,9 +2722,7 @@ app.post(
         tuanvinh,
 
         message:
-          tuanvinh
-            ? 'Đã lưu tracking và lấy dữ liệu Tuấn Vĩnh.'
-            : 'Đã lưu tracking nhưng Tuấn Vĩnh chưa trả dữ liệu.',
+          'Đã lưu tracking. Bấm update Tuấn Vĩnh khi muốn lấy trạng thái mới.',
       });
 
     } catch (error) {
@@ -2878,8 +2839,30 @@ app.post(
       if (
         result?.success
       ) {
+        const hasExitedVietnam =
+          Array.isArray(result?.history) &&
+          result.history.some((item) => {
+            const text =
+              typeof item === 'string'
+                ? item
+                : String(
+                    item?.status ||
+                    item?.name ||
+                    item?.text ||
+                    ''
+                  );
+
+            return text.includes(
+              'Xuất kho Việt Nam'
+            );
+          });
+
         order.tuanvinh =
           result;
+
+        order.tuanvinh_locked =
+          order.tuanvinh_locked === true ||
+          hasExitedVietnam;
 
         if (
           result.current_status

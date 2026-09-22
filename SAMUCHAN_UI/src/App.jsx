@@ -207,24 +207,6 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
     setLiveTuanVinh(order.tuanvinh || null)
   }, [order.order_id, order.tracking_number, order.tuanvinh])
 
-  // Khi mở chi tiết một đơn đã có tracking, lấy dữ liệu logistics mới nhất
-  // ngay cả khi đợt đồng bộ nền chưa chạy xong. API này cũng ghi dữ liệu về
-  // order ở backend để các lần mở sau có thể dùng dữ liệu đã lưu.
-  useEffect(() => {
-    const tracking = String(order.tracking_number || '').trim()
-    if (!tracking || liveTuanVinh?.success) return undefined
-
-    let cancelled = false
-    onRefreshTuanVinh({ ...order, tracking_number: tracking, forceTuanVinh: true })
-      .then((data) => {
-        if (!cancelled && data?.success) setLiveTuanVinh(data)
-      })
-      .catch((error) => {
-        if (!cancelled) console.error(`[TUANVINH] ${tracking}:`, error)
-      })
-
-    return () => { cancelled = true }
-  }, [order, liveTuanVinh, onRefreshTuanVinh])
 
   const saveTracking = async () => {
     const tracking = trackingInput.trim()
@@ -259,65 +241,20 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
         )
       }
 
-      // Backend đã lưu tracking và có thể đã tra Tuấn Vĩnh.
-      let tv =
-        data?.tuanvinh ||
-        data?.order?.tuanvinh ||
-        null
-
       let savedOrder = {
         ...order,
         ...(data?.order || {}),
         tracking_number: tracking,
       }
 
-      if (tv?.success) {
-        savedOrder.tuanvinh = tv
-        savedOrder.status =
-          tv.current_status ||
-          savedOrder.status
-      }
-
-      // Cập nhật ngay popup.
       onTrackingSaved(savedOrder)
 
       setTrackingInput(tracking)
       setTrackingEditing(false)
-
-      if (tv?.success) {
-        setLiveTuanVinh(tv)
-        setTrackingMessage(
-          '✓ Đã lưu tracking và cập nhật Tuấn Vĩnh.'
-        )
-      } else {
-        // Nếu POST chưa trả TV, gọi GET trực tiếp.
-        setTrackingMessage(
-          'Đã lưu tracking — đang tra lại Tuấn Vĩnh...'
-        )
-
-        try {
-          tv = await onRefreshTuanVinh({
-            ...savedOrder,
-            tracking_number: tracking,
-            forceTuanVinh: true,
-          })
-
-          if (tv?.success) {
-            setLiveTuanVinh(tv)
-            setTrackingMessage(
-              '✓ Đã lưu tracking và cập nhật Tuấn Vĩnh.'
-            )
-          } else {
-            throw new Error(
-              'Tuấn Vĩnh chưa trả dữ liệu cho mã này.'
-            )
-          }
-        } catch (refreshError) {
-          setTrackingMessage(
-            `⚠️ Tracking đã lưu nhưng chưa lấy được Tuấn Vĩnh: ${refreshError.message}`
-          )
-        }
-      }
+      setLiveTuanVinh(savedOrder.tuanvinh || null)
+      setTrackingMessage(
+        'Đã lưu tracking. Bấm update Tuấn Vĩnh khi muốn lấy trạng thái mới nhất.'
+      )
 
     } catch (err) {
       setTrackingMessage(
@@ -1726,20 +1663,23 @@ useEffect(() => {
 
   const refreshOneTuanVinh = useCallback(async (order) => {
     const tracking = String(order?.tracking_number || '').trim()
-    const forceTuanVinh = Boolean(order?.forceTuanVinh)
 
     if (!tracking) return null
     try {
       const response = await fetch(
-  `/api/tuanvinh/track/${encodeURIComponent(tracking)}?force=1`,
-  {
-    method: 'GET',
-    cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-cache',
-    },
-  }
-)
+        '/api/tuanvinh/refresh-order',
+        {
+          method: 'POST',
+          cache: 'no-store',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+          body: JSON.stringify({
+            order_id: order.order_id,
+          }),
+        }
+      )
 
       const payload = await readApiJson(response)
 
@@ -1754,22 +1694,23 @@ useEffect(() => {
       const tv =
         payload?.data ||
         payload?.tuanvinh ||
+        payload?.order?.tuanvinh ||
         payload
       const hasExitedVietnam =
-  Array.isArray(tv?.history) &&
-  tv.history.some((item) => {
-    const text =
-      typeof item === 'string'
-        ? item
-        : String(
-            item?.status ||
-            item?.name ||
-            item?.text ||
-            ''
-          )
+        Array.isArray(tv?.history) &&
+        tv.history.some((item) => {
+          const text =
+            typeof item === 'string'
+              ? item
+              : String(
+                  item?.status ||
+                  item?.name ||
+                  item?.text ||
+                  ''
+                )
 
-    return text.includes('Xuất kho Việt Nam')
-  })
+          return text.includes('Xuất kho Việt Nam')
+        })
       if (!tv || tv.success === false) {
         throw new Error(
           tv?.message ||
@@ -1778,34 +1719,34 @@ useEffect(() => {
       }
 
       setOrders((current) =>
-  current.map((item) =>
-    item.order_id === order.order_id
-      ? {
-          ...item,
-          tuanvinh: tv,
-          tuanvinh_locked:
-            item.tuanvinh_locked === true ||
-            hasExitedVietnam,
-          status:
-            tv.current_status || item.status,
-        }
-      : item
-  )
-)
+        current.map((item) =>
+          item.order_id === order.order_id
+            ? {
+                ...item,
+                tuanvinh: tv,
+                tuanvinh_locked:
+                  item.tuanvinh_locked === true ||
+                  hasExitedVietnam,
+                status:
+                  tv.current_status || item.status,
+              }
+            : item
+        )
+      )
 
       setSelectedOrder((current) =>
-  current && current.order_id === order.order_id
-    ? {
-        ...current,
-        tuanvinh: tv,
-        tuanvinh_locked:
-          current.tuanvinh_locked === true ||
-          hasExitedVietnam,
-        status:
-          tv.current_status || current.status,
-      }
-    : current
-)
+        current && current.order_id === order.order_id
+          ? {
+              ...current,
+              tuanvinh: tv,
+              tuanvinh_locked:
+                current.tuanvinh_locked === true ||
+                hasExitedVietnam,
+              status:
+                tv.current_status || current.status,
+            }
+          : current
+      )
 
       return tv
     } catch (err) {
@@ -1816,38 +1757,6 @@ useEffect(() => {
       throw err
     }
   }, [])
-
-  const enrichTuanVinh = useCallback(async (sourceOrders) => {
-    // Lấy logistics cho mọi đơn có tracking. Trước đây điều kiện ngày đặt
-    // hàng làm các đơn cũ hơn mốc cutoff không bao giờ nhận được cân nặng và
-    // lịch sử, dù API Tuấn Vĩnh đã có dữ liệu.
-    const targets = sourceOrders.filter((order) => {
-  if (!order.tracking_number) {
-    return false
-  }
-
-  // Tracking đã từng Xuất kho Việt Nam
-  // thì không tự động tra lại nữa.
-  if (order.tuanvinh_locked === true) {
-    return false
-  }
-
-  return true
-})
-    if (!targets.length) return
-
-    setLogisticsLoading(true)
-    try {
-      const unique = [...new Map(targets.map((order) => [String(order.tracking_number), order])).values()]
-      const concurrency = 5
-      for (let i = 0; i < unique.length; i += concurrency) {
-        const batch = unique.slice(i, i + concurrency)
-        await Promise.all(batch.map((order) => refreshOneTuanVinh(order)))
-      }
-    } finally {
-      setLogisticsLoading(false)
-    }
-  }, [refreshOneTuanVinh])
 
   const loadOrders = useCallback(async () => {
     try {
@@ -1860,13 +1769,12 @@ useEffect(() => {
       setUpdatedAt(data.updated_at || null)
       setTaobaoSyncedAt(data.taobao_synced_at || null)
       setLoading(false)
-      enrichTuanVinh(normalized)
       return data
     } catch (err) {
       setError(err.message || 'Không đọc được dữ liệu Taobao')
       setLoading(false)
     }
-  }, [enrichTuanVinh])
+  }, [])
 
   const syncAll = useCallback(async () => {
     try {
