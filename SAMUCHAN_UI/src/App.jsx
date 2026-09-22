@@ -528,41 +528,246 @@ function formatTimeValue(value) {
 // SKU MASTER
 // ============================================================
 
+// ============================================================
+// SKU STORAGE
+// ============================================================
+
 const SKU_MASTER_STORAGE = 'samuchan_sku_master_v1'
 const SKU_LINK_STORAGE = 'samuchan_sku_item_links_v1'
 
+// Railway API
+const SKU_API_BASE = '/api/sku'
+
+// ---------- Local fallback ----------
 function loadSkuMaster() {
   try {
-    const raw = localStorage.getItem(SKU_MASTER_STORAGE)
-    const data = JSON.parse(raw || '[]')
-    return Array.isArray(data) ? data : []
+    const raw = localStorage.getItem(
+      SKU_MASTER_STORAGE
+    )
+
+    const data = JSON.parse(
+      raw || '[]'
+    )
+
+    return Array.isArray(data)
+      ? data
+      : []
   } catch {
     return []
   }
 }
 
-function saveSkuMaster(data) {
-  try {
-    localStorage.setItem(SKU_MASTER_STORAGE, JSON.stringify(data))
-  } catch {}
-}
-
 function loadSkuLinks() {
   try {
-    const raw = localStorage.getItem(SKU_LINK_STORAGE)
-    const data = JSON.parse(raw || '{}')
-    return data && typeof data === 'object' ? data : {}
+    const raw = localStorage.getItem(
+      SKU_LINK_STORAGE
+    )
+
+    const data = JSON.parse(
+      raw || '{}'
+    )
+
+    return data &&
+      typeof data === 'object'
+      ? data
+      : {}
   } catch {
     return {}
   }
 }
 
-function saveSkuLinks(data) {
+function saveSkuMasterLocal(data) {
   try {
-    localStorage.setItem(SKU_LINK_STORAGE, JSON.stringify(data))
+    localStorage.setItem(
+      SKU_MASTER_STORAGE,
+      JSON.stringify(data)
+    )
   } catch {}
 }
 
+function saveSkuLinksLocal(data) {
+  try {
+    localStorage.setItem(
+      SKU_LINK_STORAGE,
+      JSON.stringify(data)
+    )
+  } catch {}
+}
+
+// ============================================================
+// Railway API
+// ============================================================
+
+async function fetchSkuMaster() {
+  try {
+    const response = await fetch(
+      `${SKU_API_BASE}/master`
+    )
+
+    if (!response.ok) {
+      throw new Error(
+        `SKU Master HTTP ${response.status}`
+      )
+    }
+
+    const result =
+      await response.json()
+
+    if (
+      result?.success &&
+      Array.isArray(result.skus)
+    ) {
+      return result.skus
+    }
+
+    throw new Error(
+      'SKU Master response không hợp lệ'
+    )
+  } catch (error) {
+    console.error(
+      '[SKU MASTER LOAD]',
+      error
+    )
+
+    return null
+  }
+}
+
+async function fetchSkuLinks() {
+  try {
+    const response = await fetch(
+      `${SKU_API_BASE}/links`
+    )
+
+    if (!response.ok) {
+      throw new Error(
+        `SKU Links HTTP ${response.status}`
+      )
+    }
+
+    const result =
+      await response.json()
+
+    if (
+      result?.success &&
+      result.links &&
+      typeof result.links === 'object'
+    ) {
+      return result.links
+    }
+
+    throw new Error(
+      'SKU Links response không hợp lệ'
+    )
+  } catch (error) {
+    console.error(
+      '[SKU LINKS LOAD]',
+      error
+    )
+
+    return null
+  }
+}
+
+async function saveSkuMaster(data) {
+  // luôn lưu local trước để có backup
+  saveSkuMasterLocal(data)
+
+  try {
+    const response = await fetch(
+      `${SKU_API_BASE}/master`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json'
+        },
+        body: JSON.stringify({
+          skus: data
+        })
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(
+        `SKU Master HTTP ${response.status}`
+      )
+    }
+
+    const result =
+      await response.json()
+
+    if (!result?.success) {
+      throw new Error(
+        result?.message ||
+        'Không lưu được SKU Master'
+      )
+    }
+
+    console.log(
+      '[SKU MASTER] Saved to Railway'
+    )
+
+    return true
+  } catch (error) {
+    console.error(
+      '[SKU MASTER SAVE]',
+      error
+    )
+
+    return false
+  }
+}
+
+async function saveSkuLinks(data) {
+  // luôn lưu local trước để có backup
+  saveSkuLinksLocal(data)
+
+  try {
+    const response = await fetch(
+      `${SKU_API_BASE}/links`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/json'
+        },
+        body: JSON.stringify({
+          links: data
+        })
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(
+        `SKU Links HTTP ${response.status}`
+      )
+    }
+
+    const result =
+      await response.json()
+
+    if (!result?.success) {
+      throw new Error(
+        result?.message ||
+        'Không lưu được SKU Links'
+      )
+    }
+
+    console.log(
+      '[SKU LINKS] Saved to Railway'
+    )
+
+    return true
+  } catch (error) {
+    console.error(
+      '[SKU LINKS SAVE]',
+      error
+    )
+
+    return false
+  }
+}
 function purchaseItemKey(order, index) {
   return `${String(order.order_id || '')}::${index}`
 }
@@ -1368,26 +1573,72 @@ function App() {
     }
   })
 
-  const [skuMaster, setSkuMaster] = useState(() =>
-    loadSkuMaster()
-  )
+const [skuMaster, setSkuMaster] = useState(() =>
+  loadSkuMaster()
+)
 
-  const [skuLinks, setSkuLinks] = useState(() =>
-    loadSkuLinks()
-  )
-  const [shopSales, setShopSales] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('samuchan_shop_sales_v1') || '[]') } catch { return [] }
-  })
-  useEffect(() => { localStorage.setItem('samuchan_shop_sales_v1', JSON.stringify(shopSales)) }, [shopSales])
+const [skuLinks, setSkuLinks] = useState(() =>
+  loadSkuLinks()
+)
 
-  useEffect(() => {
-    saveSkuMaster(skuMaster)
-  }, [skuMaster])
+const [shopSales, setShopSales] = useState(() => {
+  try {
+    return JSON.parse(
+      localStorage.getItem(
+        'samuchan_shop_sales_v1'
+      ) || '[]'
+    )
+  } catch {
+    return []
+  }
+})
 
-  useEffect(() => {
-    saveSkuLinks(skuLinks)
-  }, [skuLinks])
+// ============================================================
+// LOAD SKU FROM RAILWAY
+// ============================================================
 
+useEffect(() => {
+  let cancelled = false
+
+  async function loadRemoteSku() {
+    const remoteMaster =
+      await fetchSkuMaster()
+
+    if (
+      !cancelled &&
+      Array.isArray(remoteMaster)
+    ) {
+      setSkuMaster(remoteMaster)
+      saveSkuMasterLocal(remoteMaster)
+
+      console.log(
+        `[SKU MASTER] Loaded ${remoteMaster.length} SKU from Railway`
+      )
+    }
+
+    const remoteLinks =
+      await fetchSkuLinks()
+
+    if (
+      !cancelled &&
+      remoteLinks &&
+      typeof remoteLinks === 'object'
+    ) {
+      setSkuLinks(remoteLinks)
+      saveSkuLinksLocal(remoteLinks)
+
+      console.log(
+        `[SKU LINKS] Loaded from Railway`
+      )
+    }
+  }
+
+  loadRemoteSku()
+
+  return () => {
+    cancelled = true
+  }
+}, [])
   useEffect(() => {
     try {
       localStorage.setItem(
