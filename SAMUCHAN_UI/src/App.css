@@ -1405,6 +1405,27 @@ code {
   margin: 0;
 }
 
+.sku-refresh-button {
+  border: 1px solid #7c4dff;
+  border-radius: 8px;
+  background: #7c4dff;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 9px 12px;
+  white-space: nowrap;
+}
+
+.sku-refresh-button span {
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.sku-refresh-button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .purchase-sku-list {
   display: flex;
   flex-direction: column;

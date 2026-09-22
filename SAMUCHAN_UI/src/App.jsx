@@ -741,6 +741,7 @@ function SkuMasterPage({
   onYearChange,
   onMonthChange,
   onDayChange,
+  onRefreshPurchases,
 }) {
   const [editing, setEditing] = useState(null)
   const [skuId, setSkuId] = useState('')
@@ -749,6 +750,7 @@ function SkuMasterPage({
   const [taobaoSkus, setTaobaoSkus] = useState('')
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
+  const [purchaseRefreshing, setPurchaseRefreshing] = useState(false)
 
   const resetForm = () => {
     setEditing(null)
@@ -947,6 +949,18 @@ function SkuMasterPage({
 
     setSkuLinks(next)
     saveSkuLinks(next)
+  }
+
+  const refreshPurchaseSkuList = async () => {
+    if (!onRefreshPurchases || purchaseRefreshing) return
+
+    setPurchaseRefreshing(true)
+
+    try {
+      await onRefreshPurchases()
+    } finally {
+      setPurchaseRefreshing(false)
+    }
   }
 
   return (
@@ -1280,6 +1294,15 @@ VD:
             </p>
           </div>
           <div className="sku-date-filters">
+            <button
+              type="button"
+              className="sku-refresh-button"
+              onClick={refreshPurchaseSkuList}
+              disabled={purchaseRefreshing}
+            >
+              <span>↻</span>
+              {purchaseRefreshing ? 'Đang cập nhật...' : 'Cập nhật'}
+            </button>
             <select value={selectedYear} onChange={(e) => onYearChange(e.target.value)}><option value="Tất cả">Tất cả năm</option>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select>
             <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)}><option value="Tất cả">Tất cả tháng</option>{availableMonths.map((month) => <option key={month} value={month}>Tháng {Number(month)}</option>)}</select>
             <select value={selectedDay} onChange={(e) => onDayChange(e.target.value)}><option value="Tất cả">Tất cả ngày</option>{availableDays.map((day) => <option key={day} value={day}>Ngày {Number(day)}</option>)}</select>
@@ -1979,6 +2002,7 @@ useEffect(() => {
     onYearChange={handleYearChange}
     onMonthChange={handleMonthChange}
     onDayChange={handleDayChange}
+    onRefreshPurchases={loadOrders}
   />
 ) : activeTab === 'shop' ? (
   <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} setSales={setShopSales} skuLinks={skuLinks} />
