@@ -768,8 +768,12 @@ async function saveSkuLinks(data) {
     return false
   }
 }
-function purchaseItemKey(order, index) {
-  return `${String(order.order_id || '')}::${index}`
+function purchaseItemKey(order, item) {
+  return [
+    String(order?.order_id || '').trim(),
+    String(item?.sku || '').trim(),
+    String(item?.product_name || '').trim(),
+  ].join('::')
 }
 
 function getAutoMatchedSku(item, skuMaster) {
@@ -956,8 +960,8 @@ function SkuMasterPage({
     let itemCount = 0
 
     orders.forEach((order) => {
-      order.items.forEach((item, index) => {
-        const key = purchaseItemKey(order, index)
+      order.items.forEach((item) => {
+        const key = purchaseItemKey(order, item)
 
         const linkedId =
           skuLinks[key] ||
@@ -991,8 +995,8 @@ function SkuMasterPage({
     }
   }
 
-  const assignPurchaseItem = (order, index, masterId) => {
-    const key = purchaseItemKey(order, index)
+  const assignPurchaseItem = (order, item, masterId) => {
+    const key = purchaseItemKey(order, item)
 
     const next = {
       ...skuLinks,
@@ -1353,10 +1357,10 @@ VD:
           <div className="purchase-sku-list">
 
             {orders.flatMap((order) =>
-              order.items.map((item, index) => {
+              order.items.map((item) => {
 
                 const key =
-                  purchaseItemKey(order, index)
+                  purchaseItemKey(order, item)
 
                 const manualSku =
                   skuLinks[key] || ''
@@ -1431,7 +1435,7 @@ VD:
                         onChange={(e) =>
                           assignPurchaseItem(
                             order,
-                            index,
+                            item,
                             e.target.value
                           )
                         }
@@ -1488,8 +1492,8 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, setSales,
 
   const costBySku = (id) => {
     let qty = 0; let total = 0; let purchaseShipping = 0
-    orders.forEach((order) => order.items.forEach((item, index) => {
-      const linked = skuLinks[purchaseItemKey(order, index)] || getAutoMatchedSku(item, skuMaster)?.id
+    orders.forEach((order) => order.items.forEach((item) => {
+      const linked = skuLinks[purchaseItemKey(order, item)] || getAutoMatchedSku(item, skuMaster)?.id
       if (linked !== id) return
       const n = Number(item.quantity || 0); qty += n; total += n * Number(item.unit_price_cny || 0)
       purchaseShipping += calculateShippingCost(order.tuanvinh?.weight_kg) * (n / Math.max(1, order.items.reduce((sum, current) => sum + Number(current.quantity || 0), 0)))
@@ -1525,7 +1529,7 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, setSales,
 }
 
 function DashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, skuLinks }) {
-  const data = skuMaster.map((sku) => { const items = sales.filter((x) => x.sku === sku.id); const qty = items.reduce((n, x) => n + Number(x.quantity || 0), 0); const revenue = items.reduce((n, x) => n + Number(x.revenue || 0), 0); const shipping = items.reduce((n, x) => n + Number(x.shipping || 0), 0); let purchaseQty = 0; let purchaseCny = 0; orders.forEach((order) => order.items.forEach((item, index) => { if ((skuLinks[purchaseItemKey(order, index)] || getAutoMatchedSku(item, skuMaster)?.id) === sku.id) { const n = Number(item.quantity || 0); purchaseQty += n; purchaseCny += n * Number(item.unit_price_cny || 0) } })); const cost = purchaseQty ? qty * (purchaseCny / purchaseQty) * Number(exchangeRate || 0) : 0; return { ...sku, qty, revenue, shipping, cost, profit: revenue - cost - shipping } }).filter((x) => x.qty)
+  const data = skuMaster.map((sku) => { const items = sales.filter((x) => x.sku === sku.id); const qty = items.reduce((n, x) => n + Number(x.quantity || 0), 0); const revenue = items.reduce((n, x) => n + Number(x.revenue || 0), 0); const shipping = items.reduce((n, x) => n + Number(x.shipping || 0), 0); let purchaseQty = 0; let purchaseCny = 0; orders.forEach((order) => order.items.forEach((item) => { if ((skuLinks[purchaseItemKey(order, item)] || getAutoMatchedSku(item, skuMaster)?.id) === sku.id) { const n = Number(item.quantity || 0); purchaseQty += n; purchaseCny += n * Number(item.unit_price_cny || 0) } })); const cost = purchaseQty ? qty * (purchaseCny / purchaseQty) * Number(exchangeRate || 0) : 0; return { ...sku, qty, revenue, shipping, cost, profit: revenue - cost - shipping } }).filter((x) => x.qty)
   data.forEach((row) => {
     const purchaseShipping = orders.reduce((sum, order) => {
       const allQty = order.items.reduce((n, item) => n + Number(item.quantity || 0), 0)
@@ -1594,42 +1598,86 @@ const [shopSales, setShopSales] = useState(() => {
 })
 
 // ============================================================
-// LOAD SKU FROM RAILWAY
+//  LOAD SKU FROM RAILWAY
 // ============================================================
 
 useEffect(() => {
   let cancelled = false
 
   async function loadRemoteSku() {
-    const remoteMaster =
-      await fetchSkuMaster()
+    // ============================================
+    // 1. Đọc dữ liệu cũ trên máy
+    // ============================================
+    const localMaster = loadSkuMaster()
+    const localLinks = loadSkuLinks()
 
-    if (
-      !cancelled &&
-      Array.isArray(remoteMaster)
-    ) {
-      setSkuMaster(remoteMaster)
-      saveSkuMasterLocal(remoteMaster)
+    // ============================================
+    // 2. Đọc SKU Master từ Railway
+    // ============================================
+    const remoteMaster = await fetchSkuMaster()
 
-      console.log(
-        `[SKU MASTER] Loaded ${remoteMaster.length} SKU from Railway`
-      )
+    if (cancelled) return
+
+    if (Array.isArray(remoteMaster)) {
+      if (remoteMaster.length > 0) {
+        // Railway đã có dữ liệu → dùng Railway
+        setSkuMaster(remoteMaster)
+        saveSkuMasterLocal(remoteMaster)
+
+        console.log(
+          `[SKU MASTER] Loaded ${remoteMaster.length} SKU from Railway`
+        )
+      } else if (localMaster.length > 0) {
+        // Railway đang trống nhưng máy này có dữ liệu cũ
+        // → migrate local lên Railway
+        console.log(
+          `[SKU MASTER] Railway empty → migrating ${localMaster.length} local SKU`
+        )
+
+        setSkuMaster(localMaster)
+
+        await saveSkuMaster(localMaster)
+      } else {
+        setSkuMaster([])
+      }
     }
 
-    const remoteLinks =
-      await fetchSkuLinks()
+    // ============================================
+    // 3. Đọc Purchase → SKU links từ Railway
+    // ============================================
+    const remoteLinks = await fetchSkuLinks()
 
-    if (
-      !cancelled &&
+    if (cancelled) return
+
+    const hasRemoteLinks =
       remoteLinks &&
-      typeof remoteLinks === 'object'
-    ) {
+      typeof remoteLinks === 'object' &&
+      Object.keys(remoteLinks).length > 0
+
+    const hasLocalLinks =
+      localLinks &&
+      typeof localLinks === 'object' &&
+      Object.keys(localLinks).length > 0
+
+    if (hasRemoteLinks) {
+      // Railway đã có mapping → dùng Railway
       setSkuLinks(remoteLinks)
       saveSkuLinksLocal(remoteLinks)
 
       console.log(
-        `[SKU LINKS] Loaded from Railway`
+        `[SKU LINKS] Loaded ${Object.keys(remoteLinks).length} mappings from Railway`
       )
+    } else if (hasLocalLinks) {
+      // Railway chưa có mapping → migrate mapping cũ
+      console.log(
+        `[SKU LINKS] Railway empty → migrating ${Object.keys(localLinks).length} local mappings`
+      )
+
+      setSkuLinks(localLinks)
+
+      await saveSkuLinks(localLinks)
+    } else {
+      setSkuLinks({})
     }
   }
 
@@ -1688,7 +1736,7 @@ useEffect(() => {
           method: 'GET',
           cache: 'no-store',
           headers: {
-            'Cache-Control': 'no-cache',
+            'CacLOAD SKU FROM RAILWAYhe-Control': 'no-cache',
           },
         }
       )
