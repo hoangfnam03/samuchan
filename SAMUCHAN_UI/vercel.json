@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://tunnel-option-jumping-pieces.trycloudflare.com/api/:path*"
+      "destination": "https://samuchan-production.up.railway.app/api/:path*"
     }
   ]
 }
