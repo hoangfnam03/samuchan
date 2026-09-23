@@ -810,6 +810,16 @@ code {
   justify-content: flex-end;
   gap: 8px;
   height: 220px;
+  cursor: pointer;
+  border-radius: 10px;
+  outline: 2px solid transparent;
+  outline-offset: 5px;
+}
+
+.shop-month-column:hover,
+.shop-month-column.selected {
+  outline-color: #dcd3ff;
+  background: #faf9ff;
 }
 
 .shop-month-column > strong {
@@ -836,6 +846,44 @@ code {
 .shop-chart-cost { background: #f0a34b; }
 .shop-chart-profit { background: #35b77a; }
 .legend-cost { background: #f0a34b; }
+
+.shop-chart-detail {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e5e1fa;
+  border-radius: 10px;
+  background: #faf9ff;
+}
+
+.shop-chart-detail > strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #40336e;
+}
+
+.shop-chart-detail > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+}
+
+.shop-chart-detail span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #666873;
+  font-size: 13px;
+}
+
+.shop-chart-detail i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.shop-chart-detail b {
+  color: #292a30;
+}
 
 .shop-table-scroll {
   overflow-x: auto;
