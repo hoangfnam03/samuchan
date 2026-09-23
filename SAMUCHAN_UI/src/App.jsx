@@ -2240,7 +2240,7 @@ useEffect(() => {
     onRefreshPurchases={syncAll}
   />
 ) : activeTab === 'sales-dashboard' ? (
-  <SalesDashboardPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} salesLoading={shopSalesLoading} salesError={shopSalesError} />
+  <SalesDashboardPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
 ) : activeTab === 'shop' ? (
   <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} onSalesChange={saveRemoteShopSales} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
 ) : (
