@@ -542,6 +542,32 @@ const SETTINGS_API_BASE = '/api/settings'
 // Railway API
 // ============================================================
 
+async function fetchAppSettings() {
+  const response = await fetch(SETTINGS_API_BASE, { cache: 'no-store' })
+  const result = await readApiJson(response)
+
+  if (!response.ok || !result?.success || !result.settings || typeof result.settings !== 'object') {
+    throw new Error(result?.message || 'Khong doc duoc cai dat tu Railway')
+  }
+
+  return result.settings
+}
+
+async function saveAppSettings(settings) {
+  const response = await fetch(SETTINGS_API_BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings }),
+  })
+  const result = await readApiJson(response)
+
+  if (!response.ok || !result?.success) {
+    throw new Error(result?.message || 'Khong luu duoc cai dat len Railway')
+  }
+
+  return result.settings
+}
+
 async function fetchSkuMaster() {
   try {
     const response = await fetch(
