@@ -704,6 +704,165 @@ code {
   border-radius: 10px;
   background: #fbfaff;
 }
+
+/* SAMU.SHOP: one row per sale, with dates and a monthly cost chart */
+.shop-entry-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+}
+
+.shop-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: #888b94;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.shop-form-field input,
+.shop-form-field select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.shop-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.shop-form-actions button {
+  flex: 1;
+  cursor: pointer;
+}
+
+.shop-form-actions .tracking-cancel-button {
+  flex: 0 0 auto;
+  background: #fff;
+  color: #555;
+  border: 1px solid #dfe1e8;
+}
+
+.shop-form-note {
+  display: block;
+  margin-top: 12px;
+  color: #999ba3;
+  font-size: 11px;
+}
+
+.shop-filter-card {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 22px;
+  flex-wrap: wrap;
+}
+
+.shop-filter-card .date-filter-heading {
+  flex: 1;
+}
+
+.shop-summary-cards {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.shop-chart-card {
+  padding: 24px;
+}
+
+.shop-chart-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.shop-chart-heading h2 {
+  margin: 0;
+}
+
+.shop-chart-heading small {
+  max-width: 430px;
+  color: #888b94;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.shop-month-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  min-height: 240px;
+  margin-top: 22px;
+  padding: 14px 12px 0;
+  overflow-x: auto;
+  background: linear-gradient(to top, #e8e9ee 1px, transparent 1px);
+  background-size: 100% 25%;
+}
+
+.shop-month-column {
+  display: flex;
+  flex: 0 0 82px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  height: 220px;
+}
+
+.shop-month-column > strong {
+  color: #555861;
+  font-size: 11px;
+}
+
+.shop-month-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 190px;
+}
+
+.shop-chart-bar {
+  width: 19px;
+  min-height: 2px;
+  border-radius: 6px 6px 0 0;
+}
+
+.shop-chart-revenue { background: #7351df; }
+.shop-chart-cost { background: #f0a34b; }
+.shop-chart-profit { background: #35b77a; }
+.legend-cost { background: #f0a34b; }
+
+.shop-table-scroll {
+  overflow-x: auto;
+}
+
+.shop-table-head,
+.shop-table-row {
+  min-width: 1680px;
+  grid-template-columns: 1.6fr 1.35fr .45fr 1fr 1fr 1.1fr 1fr .8fr 1fr 1.1fr 1fr 1.15fr 1.1fr .7fr;
+}
+
+.shop-table-row > span,
+.shop-table-row > strong:not(.shop-product) {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .shop-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shop-summary-cards { grid-template-columns: repeat(2, 1fr); }
+  .shop-chart-heading { flex-direction: column; }
+  .shop-chart-heading small { text-align: left; }
+}
+
+@media (max-width: 560px) {
+  .shop-entry-grid { grid-template-columns: 1fr; }
+  .shop-summary-cards { grid-template-columns: 1fr; }
+}
 .purchase-sku-recognition-heading {
   display:flex;
   align-items:center;
