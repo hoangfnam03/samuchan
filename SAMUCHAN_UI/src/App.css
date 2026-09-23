@@ -852,6 +852,20 @@ code {
   white-space: nowrap;
 }
 
+.shop-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.shop-delete {
+  border: 1px solid #f0c8c8;
+  background: #fff7f7;
+  color: #c44747;
+  border-radius: 7px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
 @media (max-width: 900px) {
   .shop-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shop-summary-cards { grid-template-columns: repeat(2, 1fr); }
