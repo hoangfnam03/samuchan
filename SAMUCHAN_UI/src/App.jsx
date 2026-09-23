@@ -1733,8 +1733,31 @@ useEffect(() => {
     let cancelled = false
 
     fetchAppSettings()
-      .then((settings) => {
-        if (!cancelled) setExchangeRate(Number(settings.exchangeRate || 0))
+      .then(async (settings) => {
+        if (cancelled) return
+
+        const hasRemoteRate = Object.prototype.hasOwnProperty.call(settings, 'exchangeRate')
+        let rate = Number(settings.exchangeRate || 0)
+
+        if (!hasRemoteRate) {
+          try {
+            const legacyRate = Number(localStorage.getItem('samuchan_exchange_rate') || 0)
+            if (legacyRate > 0) {
+              rate = legacyRate
+              await saveAppSettings({ exchangeRate: legacyRate })
+            }
+          } catch {}
+        }
+
+        setExchangeRate(rate)
+
+        try {
+          localStorage.removeItem('samuchan_exchange_rate')
+          localStorage.removeItem('samuchan_active_tab')
+          localStorage.removeItem('samuchan_selected_year')
+          localStorage.removeItem('samuchan_selected_month')
+          localStorage.removeItem('samuchan_selected_day')
+        } catch {}
       })
       .catch((settingsError) => {
         if (!cancelled) setError(settingsError.message || 'Khong doc duoc ty gia tu Railway')
