@@ -533,68 +533,10 @@ function formatTimeValue(value) {
 // SKU STORAGE
 // ============================================================
 
-const SKU_MASTER_STORAGE = 'samuchan_sku_master_v1'
-const SKU_LINK_STORAGE = 'samuchan_sku_item_links_v1'
-
 // Railway API
 const SKU_API_BASE = '/api/sku'
 const SHOP_API_BASE = '/api/shop'
-
-// ---------- Local fallback ----------
-function loadSkuMaster() {
-  try {
-    const raw = localStorage.getItem(
-      SKU_MASTER_STORAGE
-    )
-
-    const data = JSON.parse(
-      raw || '[]'
-    )
-
-    return Array.isArray(data)
-      ? data
-      : []
-  } catch {
-    return []
-  }
-}
-
-function loadSkuLinks() {
-  try {
-    const raw = localStorage.getItem(
-      SKU_LINK_STORAGE
-    )
-
-    const data = JSON.parse(
-      raw || '{}'
-    )
-
-    return data &&
-      typeof data === 'object'
-      ? data
-      : {}
-  } catch {
-    return {}
-  }
-}
-
-function saveSkuMasterLocal(data) {
-  try {
-    localStorage.setItem(
-      SKU_MASTER_STORAGE,
-      JSON.stringify(data)
-    )
-  } catch {}
-}
-
-function saveSkuLinksLocal(data) {
-  try {
-    localStorage.setItem(
-      SKU_LINK_STORAGE,
-      JSON.stringify(data)
-    )
-  } catch {}
-}
+const SETTINGS_API_BASE = '/api/settings'
 
 // ============================================================
 // Railway API
@@ -673,8 +615,6 @@ async function fetchSkuLinks() {
 
 async function saveSkuMaster(data) {
   // luôn lưu local trước để có backup
-  saveSkuMasterLocal(data)
-
   try {
     const response = await fetch(
       `${SKU_API_BASE}/master`,
@@ -723,8 +663,6 @@ async function saveSkuMaster(data) {
 
 async function saveSkuLinks(data) {
   // luôn lưu local trước để có backup
-  saveSkuLinksLocal(data)
-
   try {
     const response = await fetch(
       `${SKU_API_BASE}/links`,
@@ -1630,21 +1568,11 @@ function ImageViewer({ image, name, onClose }) {
 function App() {
   const [orders, setOrders] = useState([])
   const [taobaoSyncedAt, setTaobaoSyncedAt] = useState(null)
-    const [activeTab, setActiveTab] = useState(() => {
-    try {
-      return localStorage.getItem('samuchan_active_tab') || 'purchase'
-    } catch {
-      return 'purchase'
-    }
-  })
+  const [activeTab, setActiveTab] = useState('purchase')
 
-const [skuMaster, setSkuMaster] = useState(() =>
-  loadSkuMaster()
-)
+const [skuMaster, setSkuMaster] = useState([])
 
-const [skuLinks, setSkuLinks] = useState(() =>
-  loadSkuLinks()
-)
+const [skuLinks, setSkuLinks] = useState({})
 
 const [shopSales, setShopSales] = useState([])
 const [shopSalesLoading, setShopSalesLoading] = useState(true)
@@ -1713,8 +1641,8 @@ useEffect(() => {
     // ============================================
     // 1. Đọc dữ liệu cũ trên máy
     // ============================================
-    const localMaster = loadSkuMaster()
-    const localLinks = loadSkuLinks()
+    const localMaster = []
+    const localLinks = {}
 
     // ============================================
     // 2. Đọc SKU Master từ Railway
@@ -1727,8 +1655,6 @@ useEffect(() => {
       if (remoteMaster.length > 0) {
         // Railway đã có dữ liệu → dùng Railway
         setSkuMaster(remoteMaster)
-        saveSkuMasterLocal(remoteMaster)
-
         console.log(
           `[SKU MASTER] Loaded ${remoteMaster.length} SKU from Railway`
         )
@@ -1767,8 +1693,6 @@ useEffect(() => {
     if (hasRemoteLinks) {
       // Railway đã có mapping → dùng Railway
       setSkuLinks(remoteLinks)
-      saveSkuLinksLocal(remoteLinks)
-
       console.log(
         `[SKU LINKS] Loaded ${Object.keys(remoteLinks).length} mappings from Railway`
       )
@@ -1792,42 +1716,32 @@ useEffect(() => {
     cancelled = true
   }
 }, [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'samuchan_active_tab',
-        activeTab
-      )
-    } catch {}
-  }, [activeTab])
   const [updatedAt, setUpdatedAt] = useState(null)
   const [activeFilter, setActiveFilter] = useState('Tất cả')
   const [search, setSearch] = useState('')
-  const [selectedYear, setSelectedYear] = useState(() => {
-    try { return localStorage.getItem('samuchan_selected_year') || 'Tất cả' } catch { return 'Tất cả' }
-  })
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    try { return localStorage.getItem('samuchan_selected_month') || 'Tất cả' } catch { return 'Tất cả' }
-  })
-  const [selectedDay, setSelectedDay] = useState(() => {
-    try { return localStorage.getItem('samuchan_selected_day') || 'Tất cả' } catch { return 'Tất cả' }
-  })
+  const [selectedYear, setSelectedYear] = useState('Tất cả')
+  const [selectedMonth, setSelectedMonth] = useState('Tất cả')
+  const [selectedDay, setSelectedDay] = useState('Tất cả')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [viewer, setViewer] = useState(null)
   const [loading, setLoading] = useState(true)
   const [logisticsLoading, setLogisticsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [exchangeRate, setExchangeRate] = useState(() => {
-    try { return Number(localStorage.getItem('samuchan_exchange_rate') || 0) } catch { return 0 }
-  })
+  const [exchangeRate, setExchangeRate] = useState(0)
 
   useEffect(() => {
-    try {
-      localStorage.setItem('samuchan_selected_year', selectedYear)
-      localStorage.setItem('samuchan_selected_month', selectedMonth)
-      localStorage.setItem('samuchan_selected_day', selectedDay)
-    } catch {}
-  }, [selectedYear, selectedMonth, selectedDay])
+    let cancelled = false
+
+    fetchAppSettings()
+      .then((settings) => {
+        if (!cancelled) setExchangeRate(Number(settings.exchangeRate || 0))
+      })
+      .catch((settingsError) => {
+        if (!cancelled) setError(settingsError.message || 'Khong doc duoc ty gia tu Railway')
+      })
+
+    return () => { cancelled = true }
+  }, [])
 
   const refreshOneTuanVinh = useCallback(async (order) => {
     const tracking = String(order?.tracking_number || '').trim()
@@ -2085,7 +1999,9 @@ useEffect(() => {
     const normalized = String(value).replace(/,/g, '.').replace(/[^0-9.]/g, '')
     const rate = Number(normalized) || 0
     setExchangeRate(rate)
-    try { localStorage.setItem('samuchan_exchange_rate', String(rate)) } catch {}
+    saveAppSettings({ exchangeRate: rate }).catch((settingsError) => {
+      setError(settingsError.message || 'Khong luu duoc ty gia len Railway')
+    })
   }
 
   const formatVnd = (value) => `${Math.round(value).toLocaleString('vi-VN')} ₫`
@@ -2111,7 +2027,6 @@ useEffect(() => {
       const next = { ...current }
       if (masterId) next[key] = masterId
       else delete next[key]
-      saveSkuLinksLocal(next)
       saveSkuLinks(next)
       return next
     })

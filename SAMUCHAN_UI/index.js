@@ -2990,6 +2990,11 @@ const SHOP_SALES_FILE = path.join(
   'shop_sales.json'
 );
 
+const APP_SETTINGS_FILE = path.join(
+  DATA_DIR,
+  'app_settings.json'
+);
+
 // ---------- Read JSON safely ----------
 async function readJsonFile(file, fallback) {
   try {
@@ -3284,6 +3289,85 @@ app.post(
     } catch (error) {
       console.error(
         '[SHOP SALES SAVE ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// ============================================================
+// APP SETTINGS API
+// ============================================================
+
+app.get(
+  '/api/settings',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const data = await readJsonFile(
+        APP_SETTINGS_FILE,
+        {}
+      );
+
+      res.json({
+        success: true,
+        settings: data && typeof data === 'object' && !Array.isArray(data)
+          ? data
+          : {},
+      });
+    } catch (error) {
+      console.error(
+        '[APP SETTINGS GET ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/settings',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const current = await readJsonFile(
+        APP_SETTINGS_FILE,
+        {}
+      );
+      const incoming = req.body?.settings;
+      const settings = incoming && typeof incoming === 'object' && !Array.isArray(incoming)
+        ? incoming
+        : {};
+      const next = {
+        ...(current && typeof current === 'object' && !Array.isArray(current) ? current : {}),
+        ...settings,
+      };
+
+      await writeJsonFile(
+        APP_SETTINGS_FILE,
+        next
+      );
+
+      res.json({
+        success: true,
+        settings: next,
+      });
+    } catch (error) {
+      console.error(
+        '[APP SETTINGS SAVE ERROR]',
         error
       );
 
