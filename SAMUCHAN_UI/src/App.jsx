@@ -537,6 +537,13 @@ function formatTimeValue(value) {
 const SKU_API_BASE = '/api/sku'
 const SHOP_API_BASE = '/api/shop'
 const SETTINGS_API_BASE = '/api/settings'
+const SHOP_NAMES = ['SAMU.SHOP', 'DJK BAT', 'NOMORI HOME']
+const DEFAULT_SHOP_NAME = SHOP_NAMES[0]
+
+function normalizeShopName(value) {
+  const name = String(value || '').trim().toUpperCase()
+  return SHOP_NAMES.find((shopName) => shopName.toUpperCase() === name) || DEFAULT_SHOP_NAME
+}
 
 // ============================================================
 // Railway API
@@ -776,6 +783,7 @@ function todayInputValue() {
 function normalizeShopSales(data) {
   return (Array.isArray(data) ? data : []).map((sale) => ({
     ...sale,
+    shopName: normalizeShopName(sale.shopName || sale.shop_name || sale.shop),
     orderDate: localDateValue(sale.orderDate) || localDateValue(sale.date),
     completedDate: localDateValue(sale.completedDate),
   }))
@@ -1521,7 +1529,7 @@ VD:
   )
 }
 
-function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesChange, skuLinks, salesLoading, salesError }) {
+function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRate, formatVnd, sales, onSalesChange, skuLinks, salesLoading, salesError }) {
   const [editingSale, setEditingSale] = useState(null)
   const [saving, setSaving] = useState(false)
   const [selectedYear, setSelectedYear] = useState('all')
@@ -1593,6 +1601,7 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesCh
     const record = {
       id: editingSale || Date.now(),
       ...form,
+      shopName,
       quantity,
       revenue,
       shipping: Number(form.shipping || 0),
@@ -1667,7 +1676,7 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesCh
   const totalProfit = totalRevenue - totalCost
 
   return <main className="dashboard">
-    <section className="page-heading"><div><p className="eyebrow">SAMU.SHOP</p><h1>Doanh thu & lợi nhuận</h1><p className="heading-description">Mỗi dòng là một đơn bán, có ngày ra đơn, ngày hoàn thành và đầy đủ giá vốn.</p></div></section>
+    <section className="page-heading"><div><p className="eyebrow">{shopName}</p><h1>Doanh thu & lợi nhuận</h1><p className="heading-description">Theo dõi doanh số của {shopName}, có ngày ra đơn, ngày hoàn thành và đầy đủ giá vốn.</p></div></section>
     {salesError && <div className="error-box">⚠️ {salesError}</div>}
 
     <section className="orders-card shop-entry-card">
@@ -1832,11 +1841,13 @@ useEffect(() => {
         if (cancelled) return
         setShopSales(migrated)
       } else {
-        const needsDateMigration = remoteSalesRaw.some((sale, index) => {
+        const needsSalesMigration = remoteSalesRaw.some((sale, index) => {
           const normalized = remoteSales[index]
-          return sale.orderDate !== normalized.orderDate || sale.completedDate !== normalized.completedDate
+          return sale.shopName !== normalized.shopName
+            || sale.orderDate !== normalized.orderDate
+            || sale.completedDate !== normalized.completedDate
         })
-        if (needsDateMigration) {
+        if (needsSalesMigration) {
           const migrated = await saveShopSales(remoteSales)
           if (cancelled) return
           setShopSales(migrated)
@@ -1873,6 +1884,14 @@ const saveRemoteShopSales = useCallback(async (nextSales) => {
     return false
   }
 }, [])
+
+const getSalesForShop = (shopName) => shopSales.filter((sale) => normalizeShopName(sale.shopName) === shopName)
+
+const saveRemoteShopSalesFor = useCallback(async (shopName, nextShopSales) => {
+  const otherShopSales = shopSales.filter((sale) => normalizeShopName(sale.shopName) !== shopName)
+  const normalizedShopSales = nextShopSales.map((sale) => ({ ...sale, shopName }))
+  return saveRemoteShopSales([...otherShopSales, ...normalizedShopSales])
+}, [shopSales, saveRemoteShopSales])
 
 // ============================================================
 //  LOAD SKU FROM RAILWAY
@@ -2332,6 +2351,22 @@ useEffect(() => {
   >
     🛍️ SAMU.SHOP
   </button>
+
+  <button
+    type="button"
+    className={activeTab === 'djk-bat' ? 'active' : ''}
+    onClick={() => setActiveTab('djk-bat')}
+  >
+    🛍️ DJK BAT
+  </button>
+
+  <button
+    type="button"
+    className={activeTab === 'nomori-home' ? 'active' : ''}
+    onClick={() => setActiveTab('nomori-home')}
+  >
+    🛍️ NOMORI HOME
+  </button>
 </div>
 
 {activeTab === 'sku-master' ? (
@@ -2355,7 +2390,11 @@ useEffect(() => {
     onRefreshPurchases={syncAll}
   />
 ) : activeTab === 'shop' ? (
-  <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} onSalesChange={saveRemoteShopSales} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
+  <ShopPage shopName="SAMU.SHOP" skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={getSalesForShop('SAMU.SHOP')} onSalesChange={(nextSales) => saveRemoteShopSalesFor('SAMU.SHOP', nextSales)} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
+) : activeTab === 'djk-bat' ? (
+  <ShopPage shopName="DJK BAT" skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={getSalesForShop('DJK BAT')} onSalesChange={(nextSales) => saveRemoteShopSalesFor('DJK BAT', nextSales)} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
+) : activeTab === 'nomori-home' ? (
+  <ShopPage shopName="NOMORI HOME" skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={getSalesForShop('NOMORI HOME')} onSalesChange={(nextSales) => saveRemoteShopSalesFor('NOMORI HOME', nextSales)} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
 ) : (
   <main className="dashboard">
         <section className="page-heading">
