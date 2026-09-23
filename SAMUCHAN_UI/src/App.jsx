@@ -1575,7 +1575,7 @@ function DashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, skuL
   return <main className="dashboard"><section className="page-heading"><div><p className="eyebrow">DASHBOARD</p><h1>Doanh số & lợi nhuận</h1><p className="heading-description">Tổng quan hiệu quả bán hàng theo SKU.</p></div></section><div className="dashboard-cards"><div><span>Sản phẩm bán</span><strong>{total('qty')}</strong></div><div><span>Doanh thu</span><strong>{formatVnd(total('revenue'))}</strong></div><div><span>Phí vận chuyển</span><strong>{formatVnd(total('shipping'))}</strong></div><div><span>Lợi nhuận</span><strong className="profit-positive">{formatVnd(total('profit'))}</strong></div></div><section className="orders-card dashboard-chart"><h2>Doanh thu theo SKU</h2>{data.length ? data.map((row) => <div className="dashboard-bar-row" key={row.id}><strong>{row.id}</strong><div><span className="bar revenue-bar" style={{ width: `${row.revenue / max * 100}%` }} /><span className="bar profit-bar" style={{ width: `${Math.max(0, row.profit) / max * 100}%` }} /></div><b>{formatVnd(row.revenue)}</b></div>) : <div className="empty-state">Chưa có dữ liệu bán hàng.</div>}<div className="chart-legend"><span className="legend-revenue" /> Doanh thu <span className="legend-profit" /> Lợi nhuận</div></section></main>
 }
 
-function SalesDashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, salesLoading, salesError }) {
+function SalesDashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, skuLinks, salesLoading, salesError }) {
   const [selectedYear, setSelectedYear] = useState('all')
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [selectedDay, setSelectedDay] = useState('all')
@@ -1613,14 +1613,15 @@ function SalesDashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales,
     let purchaseQuantity = 0
     let purchaseCny = 0
     orders.forEach((order) => order.items.forEach((item) => {
-      if (getAutoMatchedSku(item, skuMaster)?.id !== sku.id) return
+      const linkedSku = skuLinks[purchaseItemKey(order, item)] || getAutoMatchedSku(item, skuMaster)?.id
+      if (linkedSku !== sku.id) return
       const quantity = Number(item.quantity || 0)
       purchaseQuantity += quantity
       purchaseCny += quantity * Number(item.unit_price_cny || 0)
     }))
     const cost = purchaseQuantity ? quantity * (purchaseCny / purchaseQuantity) * Number(exchangeRate || 0) : 0
     return { ...sku, quantity, revenue, shipping, cost, profit: revenue - cost - shipping }
-  }).filter((row) => row.quantity || row.revenue), [skuMaster, orders, exchangeRate, filteredSales])
+  }).filter((row) => row.quantity || row.revenue), [skuMaster, orders, exchangeRate, filteredSales, skuLinks])
 
   const totalQuantity = filteredSales.reduce((sum, sale) => sum + Number(sale.quantity || 0), 0)
   const totalRevenue = filteredSales.reduce((sum, sale) => sum + Number(sale.revenue || 0), 0)
