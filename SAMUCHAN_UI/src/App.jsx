@@ -721,10 +721,11 @@ async function fetchShopSales() {
 }
 
 async function saveShopSales(data) {
+  const normalizedSales = normalizeShopSales(data)
   const response = await fetch(`${SHOP_API_BASE}/sales`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sales: data }),
+    body: JSON.stringify({ sales: normalizedSales }),
   })
   const result = await readApiJson(response)
 
@@ -732,7 +733,26 @@ async function saveShopSales(data) {
     throw new Error(result?.message || 'Khong luu duoc don SAMU.SHOP')
   }
 
-  return result.sales
+  return normalizeShopSales(result.sales)
+}
+
+function localDateValue(value) {
+  const match = String(value || '').match(/^(20\d{2}-\d{2}-\d{2})/)
+  return match ? match[1] : ''
+}
+
+function todayInputValue() {
+  const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+function normalizeShopSales(data) {
+  return (Array.isArray(data) ? data : []).map((sale) => ({
+    ...sale,
+    orderDate: localDateValue(sale.orderDate) || localDateValue(sale.date),
+    completedDate: localDateValue(sale.completedDate),
+  }))
 }
 function purchaseItemKey(order, item) {
   return [
@@ -1478,7 +1498,7 @@ VD:
 function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesChange, skuLinks, salesLoading, salesError }) {
   const [editingSale, setEditingSale] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
+  const [form, setForm] = useState({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
 
   const costBySku = (id) => {
     let qty = 0; let total = 0; let purchaseShipping = 0
@@ -1502,13 +1522,13 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesCh
       const saved = await onSalesChange(next)
       if (!saved) return
       setEditingSale(null)
-      setForm({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
+      setForm({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
     } finally {
       setSaving(false)
     }
   }
 
-  const editSale = (sale) => { setForm({ sku: sale.sku, quantity: sale.quantity, revenue: sale.revenue, shipping: sale.shipping, purchaseOrderId: sale.purchaseOrderId || '' }); setEditingSale(sale.id) }
+  const editSale = (sale) => { setForm({ sku: sale.sku, quantity: sale.quantity, revenue: sale.revenue, shipping: sale.shipping, purchaseOrderId: sale.purchaseOrderId || '', orderDate: sale.orderDate || localDateValue(sale.date) || todayInputValue(), completedDate: sale.completedDate || '' }); setEditingSale(sale.id) }
 
   const rows = skuMaster.map((sku) => {
     const list = sales.filter((sale) => sale.sku === sku.id)
@@ -1523,7 +1543,8 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesCh
     <section className="page-heading"><div><p className="eyebrow">SAMU.SHOP</p><h1>Doanh thu & lợi nhuận</h1><p className="heading-description">Theo dõi số lượng bán, doanh thu, giá vốn và lợi nhuận theo SKU.</p></div></section>
     {salesError && <div className="error-box">⚠️ {salesError}</div>}
     <section className="orders-card shop-entry-card"><h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2><div className="shop-entry-grid"><select disabled={salesLoading || saving} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}><option value="">Chọn SKU</option>{skuMaster.map((sku) => <option key={sku.id} value={sku.id}>{sku.id} — {sku.name}</option>)}</select><select disabled={salesLoading || saving} value={form.purchaseOrderId} onChange={(e) => setForm({ ...form, purchaseOrderId: e.target.value })}><option value="">Chọn Order Purchase</option>{orders.map((order) => <option key={order.order_id} value={order.order_id}>#{order.order_id}</option>)}</select><input disabled={salesLoading || saving} type="number" min="1" placeholder="Số lượng" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /><input disabled={salesLoading || saving} type="number" min="0" placeholder="Doanh thu (₫)" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /><input disabled={salesLoading || saving} type="number" min="0" placeholder="Phí VC Việt Nam (₫)" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: e.target.value })} /><button type="button" onClick={addSale} disabled={salesLoading || saving}>{salesLoading ? 'Đang tải...' : saving ? 'Đang lưu...' : editingSale ? 'Lưu sửa' : '+ Thêm'}</button></div></section>
-    <section className="orders-card shop-table"><div className="shop-table-head"><strong>Ảnh / SKU</strong><strong>Đã bán</strong><strong>Doanh thu</strong><strong>Giá vốn</strong><strong>Phí VC VN</strong><strong>Lợi nhuận</strong><strong>Thao tác</strong></div>{rows.map((row) => <div className="shop-table-row" key={row.id}><strong className="shop-product"><span className="shop-product-image">{row.image ? <img src={row.image} alt={row.name} /> : '🛍️'}</span><span>{row.id}<small>{row.name}</small></span></strong><span>{row.quantity}</span><span>{formatVnd(row.revenue)}</span><span>{row.cost ? formatVnd(row.cost) : 'Chưa có giá vốn'}</span><span>{formatVnd(row.shipping)}</span><strong className={row.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(row.profit)}</strong><button type="button" className="shop-edit" onClick={() => editSale(sales.find((sale) => sale.sku === row.id))}>Sửa</button></div>)}</section>
+     <section className="orders-card shop-date-card"><div className="shop-date-fields"><label><span>Ngày ghi đơn</span><input disabled={salesLoading || saving} type="date" value={form.orderDate} onChange={(e) => setForm({ ...form, orderDate: e.target.value })} /></label><label><span>Ngày hoàn thành</span><input disabled={salesLoading || saving} type="date" value={form.completedDate} onChange={(e) => setForm({ ...form, completedDate: e.target.value })} /></label></div><small>Ngày ghi đơn dùng để lọc doanh thu trên Dashboard. Ngày hoàn thành có thể để trống.</small></section>
+     <section className="orders-card shop-table"><div className="shop-table-head"><strong>Ảnh / SKU</strong><strong>Đã bán</strong><strong>Doanh thu</strong><strong>Giá vốn</strong><strong>Phí VC VN</strong><strong>Ngày ghi</strong><strong>Ngày xong</strong><strong>Lợi nhuận</strong><strong>Thao tác</strong></div>{rows.map((row) => <div className="shop-table-row" key={row.id}><strong className="shop-product"><span className="shop-product-image">{row.image ? <img src={row.image} alt={row.name} /> : '🛍️'}</span><span>{row.id}<small>{row.name}</small></span></strong><span>{row.quantity}</span><span>{formatVnd(row.revenue)}</span><span>{row.cost ? formatVnd(row.cost) : 'Chưa có giá vốn'}</span><span>{formatVnd(row.shipping)}</span><span>{row.orderDate || '-'}</span><span>{row.completedDate || '-'}</span><strong className={row.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(row.profit)}</strong><button type="button" className="shop-edit" onClick={() => editSale(sales.find((sale) => sale.sku === row.id))}>Sửa</button></div>)}</section>
   </main>
 }
 
@@ -1552,6 +1573,68 @@ function DashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, skuL
   const totalProfit = total('profit') - purchaseShippingTotal
   const max = Math.max(1, ...data.map((x) => x.revenue))
   return <main className="dashboard"><section className="page-heading"><div><p className="eyebrow">DASHBOARD</p><h1>Doanh số & lợi nhuận</h1><p className="heading-description">Tổng quan hiệu quả bán hàng theo SKU.</p></div></section><div className="dashboard-cards"><div><span>Sản phẩm bán</span><strong>{total('qty')}</strong></div><div><span>Doanh thu</span><strong>{formatVnd(total('revenue'))}</strong></div><div><span>Phí vận chuyển</span><strong>{formatVnd(total('shipping'))}</strong></div><div><span>Lợi nhuận</span><strong className="profit-positive">{formatVnd(total('profit'))}</strong></div></div><section className="orders-card dashboard-chart"><h2>Doanh thu theo SKU</h2>{data.length ? data.map((row) => <div className="dashboard-bar-row" key={row.id}><strong>{row.id}</strong><div><span className="bar revenue-bar" style={{ width: `${row.revenue / max * 100}%` }} /><span className="bar profit-bar" style={{ width: `${Math.max(0, row.profit) / max * 100}%` }} /></div><b>{formatVnd(row.revenue)}</b></div>) : <div className="empty-state">Chưa có dữ liệu bán hàng.</div>}<div className="chart-legend"><span className="legend-revenue" /> Doanh thu <span className="legend-profit" /> Lợi nhuận</div></section></main>
+}
+
+function SalesDashboardPage({ skuMaster, orders, exchangeRate, formatVnd, sales, salesLoading, salesError }) {
+  const [selectedYear, setSelectedYear] = useState('all')
+  const [selectedMonth, setSelectedMonth] = useState('all')
+  const [selectedDay, setSelectedDay] = useState('all')
+
+  const availableYears = useMemo(() => [...new Set(
+    sales.map((sale) => localDateValue(sale.orderDate || sale.date).slice(0, 4)).filter(Boolean)
+  )].sort((a, b) => b.localeCompare(a)), [sales])
+
+  const availableMonths = useMemo(() => [...new Set(
+    sales
+      .map((sale) => localDateValue(sale.orderDate || sale.date))
+      .filter((date) => date && (selectedYear === 'all' || date.startsWith(`${selectedYear}-`)))
+      .map((date) => date.slice(5, 7))
+  )].sort((a, b) => Number(a) - Number(b)), [sales, selectedYear])
+
+  const availableDays = useMemo(() => [...new Set(
+    sales
+      .map((sale) => localDateValue(sale.orderDate || sale.date))
+      .filter((date) => date && (selectedYear === 'all' || date.startsWith(`${selectedYear}-`)) && (selectedMonth === 'all' || date.slice(5, 7) === selectedMonth))
+      .map((date) => date.slice(8, 10))
+  )].sort((a, b) => Number(a) - Number(b)), [sales, selectedYear, selectedMonth])
+
+  const filteredSales = useMemo(() => sales.filter((sale) => {
+    const date = localDateValue(sale.orderDate || sale.date)
+    return (selectedYear === 'all' || date.startsWith(`${selectedYear}-`))
+      && (selectedMonth === 'all' || date.slice(5, 7) === selectedMonth)
+      && (selectedDay === 'all' || date.slice(8, 10) === selectedDay)
+  }), [sales, selectedYear, selectedMonth, selectedDay])
+
+  const rows = useMemo(() => skuMaster.map((sku) => {
+    const list = filteredSales.filter((sale) => sale.sku === sku.id)
+    const quantity = list.reduce((sum, sale) => sum + Number(sale.quantity || 0), 0)
+    const revenue = list.reduce((sum, sale) => sum + Number(sale.revenue || 0), 0)
+    const shipping = list.reduce((sum, sale) => sum + Number(sale.shipping || 0), 0)
+    let purchaseQuantity = 0
+    let purchaseCny = 0
+    orders.forEach((order) => order.items.forEach((item) => {
+      if (getAutoMatchedSku(item, skuMaster)?.id !== sku.id) return
+      const quantity = Number(item.quantity || 0)
+      purchaseQuantity += quantity
+      purchaseCny += quantity * Number(item.unit_price_cny || 0)
+    }))
+    const cost = purchaseQuantity ? quantity * (purchaseCny / purchaseQuantity) * Number(exchangeRate || 0) : 0
+    return { ...sku, quantity, revenue, shipping, cost, profit: revenue - cost - shipping }
+  }).filter((row) => row.quantity || row.revenue), [skuMaster, orders, exchangeRate, filteredSales])
+
+  const totalQuantity = filteredSales.reduce((sum, sale) => sum + Number(sale.quantity || 0), 0)
+  const totalRevenue = filteredSales.reduce((sum, sale) => sum + Number(sale.revenue || 0), 0)
+  const completedCount = filteredSales.filter((sale) => sale.completedDate).length
+  const totalProfit = rows.reduce((sum, row) => sum + row.profit, 0)
+  const maxRevenue = Math.max(1, ...rows.map((row) => row.revenue))
+
+  return <main className="dashboard">
+    <section className="page-heading"><div><p className="eyebrow">DASHBOARD</p><h1>Thống kê SAMU.SHOP</h1><p className="heading-description">Theo dõi doanh thu theo ngày ghi đơn, SKU và trạng thái hoàn thành.</p></div></section>
+    {salesError && <div className="error-box">⚠️ {salesError}</div>}
+    <section className="orders-card dashboard-filter-card"><div className="date-filter-heading"><span className="date-filter-icon">◷</span><div><strong>Lọc theo ngày ghi đơn</strong><small>Chọn năm, tháng hoặc ngày để xem doanh thu.</small></div></div><div className="date-filter-controls"><label><span>Năm</span><select value={selectedYear} onChange={(e) => { setSelectedYear(e.target.value); setSelectedMonth('all'); setSelectedDay('all') }}><option value="all">Tất cả năm</option>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><label><span>Tháng</span><select value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setSelectedDay('all') }}><option value="all">Tất cả tháng</option>{availableMonths.map((month) => <option key={month} value={month}>Tháng {Number(month)}</option>)}</select></label><label><span>Ngày</span><select value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} disabled={selectedMonth === 'all'}><option value="all">Tất cả ngày</option>{availableDays.map((day) => <option key={day} value={day}>Ngày {Number(day)}</option>)}</select></label></div></section>
+    <div className="dashboard-cards"><div><span>Đơn bán</span><strong>{filteredSales.length}</strong></div><div><span>Sản phẩm bán</span><strong>{totalQuantity}</strong></div><div><span>Doanh thu</span><strong>{formatVnd(totalRevenue)}</strong></div><div><span>Đã hoàn thành</span><strong>{completedCount}</strong></div><div><span>Lợi nhuận ước tính</span><strong className={totalProfit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(totalProfit)}</strong></div></div>
+    <section className="orders-card dashboard-chart"><h2>Doanh thu theo SKU</h2>{salesLoading ? <div className="empty-state">Đang tải dữ liệu SAMU.SHOP...</div> : rows.length ? rows.map((row) => <div className="dashboard-bar-row" key={row.id}><strong>{row.id}<small>{row.name}</small></strong><div><span className="bar revenue-bar" style={{ width: `${row.revenue / maxRevenue * 100}%` }} /><span className="bar profit-bar" style={{ width: `${Math.max(0, row.profit) / maxRevenue * 100}%` }} /></div><b>{formatVnd(row.revenue)}</b></div>) : <div className="empty-state">Chưa có đơn bán trong khoảng thời gian này.</div>}<div className="chart-legend"><span className="legend-revenue" /> Doanh thu <span className="legend-profit" /> Lợi nhuận</div></section>
+  </main>
 }
 function ImageViewer({ image, name, onClose }) {
   return (
@@ -1583,7 +1666,8 @@ useEffect(() => {
 
   async function loadRemoteShopSales() {
     try {
-      const remoteSales = await fetchShopSales()
+      const remoteSalesRaw = await fetchShopSales()
+      const remoteSales = normalizeShopSales(remoteSalesRaw)
       if (cancelled) return
 
       // Migrate existing browser data once, then remove the local copy.
@@ -1598,7 +1682,17 @@ useEffect(() => {
         if (cancelled) return
         setShopSales(migrated)
       } else {
-        setShopSales(remoteSales)
+        const needsDateMigration = remoteSalesRaw.some((sale, index) => {
+          const normalized = remoteSales[index]
+          return sale.orderDate !== normalized.orderDate || sale.completedDate !== normalized.completedDate
+        })
+        if (needsDateMigration) {
+          const migrated = await saveShopSales(remoteSales)
+          if (cancelled) return
+          setShopSales(migrated)
+        } else {
+          setShopSales(remoteSales)
+        }
       }
 
       try { localStorage.removeItem('samuchan_shop_sales_v1') } catch {}
@@ -2088,6 +2182,14 @@ useEffect(() => {
   >
     🛍️ SAMU.SHOP
   </button>
+  <button
+    type="button"
+    className={activeTab === 'sales-dashboard' ? 'active' : ''}
+    onClick={() => setActiveTab('sales-dashboard')}
+  >
+    📊 DASHBOARD
+  </button>
+
 </div>
 
 {activeTab === 'sku-master' ? (
@@ -2110,6 +2212,8 @@ useEffect(() => {
     onDayChange={handleDayChange}
     onRefreshPurchases={syncAll}
   />
+) : activeTab === 'sales-dashboard' ? (
+  <SalesDashboardPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} salesLoading={shopSalesLoading} salesError={shopSalesError} />
 ) : activeTab === 'shop' ? (
   <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} onSalesChange={saveRemoteShopSales} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
 ) : (
