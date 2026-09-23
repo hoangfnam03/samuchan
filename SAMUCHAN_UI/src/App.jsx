@@ -192,20 +192,32 @@ function OrderCard({ order, onClick, onImageClick, exchangeRate, formatVnd }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVnd, onTrackingSaved, onRefreshTuanVinh }) {
+function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVnd, onTrackingSaved, onRefreshTuanVinh, skuMaster, skuLinks, onSkuLinkSaved }) {
   const totalQuantity = order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
   const [trackingInput, setTrackingInput] = useState(order.tracking_number || '')
   const [trackingSaving, setTrackingSaving] = useState(false)
   const [trackingEditing, setTrackingEditing] = useState(false)
   const [trackingMessage, setTrackingMessage] = useState('')
   const [liveTuanVinh, setLiveTuanVinh] = useState(order.tuanvinh || null)
+  const [skuEditingKey, setSkuEditingKey] = useState(null)
+  const [skuMessage, setSkuMessage] = useState('')
 
   useEffect(() => {
     setTrackingInput(order.tracking_number || '')
     setTrackingEditing(false)
     setTrackingMessage('')
     setLiveTuanVinh(order.tuanvinh || null)
+    setSkuEditingKey(null)
+    setSkuMessage('')
   }, [order.order_id, order.tracking_number, order.tuanvinh])
+
+  const savePurchaseSku = (item, masterId) => {
+    if (typeof onSkuLinkSaved === 'function') {
+      onSkuLinkSaved(order, item, masterId)
+      setSkuEditingKey(null)
+      setSkuMessage('Đã lưu nhận diện SKU cho sản phẩm này.')
+    }
+  }
 
 
   const saveTracking = async () => {
@@ -295,7 +307,7 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
         <div className="modal-section-title">Sản phẩm trong đơn</div>
         <div className="modal-products">
           {order.items.map((item, index) => (
-            <div className="modal-product" key={`${item.sku}-${index}`}>
+            <div className="modal-product modal-product-with-sku" key={`${item.sku}-${index}`}>
               <div className="modal-product-image" onClick={() => item.image && onImageClick(item.image, item.product_name)}>
                 <ProductImage src={item.image} name={item.product_name} />
                 {item.image && <span className="zoom-hint">⌕</span>}
@@ -310,10 +322,62 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
                   <span className="item-subtotal">¥{(Number(item.unit_price_cny || 0) * Number(item.quantity || 0)).toFixed(2)}</span>
                   {exchangeRate > 0 && <span className="item-vnd">{formatVnd(Number(item.unit_price_cny || 0) * Number(item.quantity || 0))}</span>}
                 </div>
+                {(() => {
+                  const key = purchaseItemKey(order, item)
+                  const manualSku = skuLinks?.[key] || ''
+                  const autoSku = getAutoMatchedSku(item, skuMaster || [])
+                  const currentSku = manualSku || autoSku?.id || ''
+                  const isEditing = skuEditingKey === key
+
+                  return (
+                    <div className="purchase-sku-recognition">
+                      <div className="purchase-sku-recognition-heading">
+                        <span>SKU phân loại</span>
+                        {manualSku ? (
+                          <small className="sku-mapping-manual">Đã gán tay</small>
+                        ) : autoSku ? (
+                          <small className="sku-mapping-auto">Tự nhận diện từ alias</small>
+                        ) : (
+                          <small className="sku-mapping-none">Chưa nhận diện</small>
+                        )}
+                      </div>
+
+                      {(!autoSku || isEditing || manualSku) ? (
+                        <div className="purchase-sku-recognition-controls">
+                          <select
+                            value={currentSku}
+                            onChange={(event) => savePurchaseSku(item, event.target.value)}
+                            aria-label="Gán SKU cho sản phẩm"
+                          >
+                            <option value="">— Chưa phân loại —</option>
+                            {(skuMaster || []).map((master) => (
+                              <option key={master.id} value={master.id}>
+                                {master.id} — {master.name}
+                              </option>
+                            ))}
+                          </select>
+                          {isEditing && autoSku && !manualSku && (
+                            <button type="button" className="tracking-cancel-button" onClick={() => setSkuEditingKey(null)}>
+                              Hủy
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="purchase-sku-recognition-current">
+                          <strong>{autoSku.id} — {autoSku.name}</strong>
+                          <button type="button" className="sku-recognition-edit" onClick={() => setSkuEditingKey(key)}>
+                            Sửa nhận diện
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           ))}
         </div>
+        {skuMessage && <div className="sku-recognition-message">✓ {skuMessage}</div>}
 
         <div className="logistics-box">
           <div className="logistics-status">
@@ -1276,6 +1340,7 @@ VD:
       {/* PURCHASE MAPPING */}
       {/* ================================================== */}
 
+      {false && (
       <section className="orders-card sku-purchase-map-card">
 
         <div className="sku-section-heading">
@@ -1440,6 +1505,7 @@ VD:
         )}
 
       </section>
+      )}
     </main>
   )
 }
@@ -1960,6 +2026,18 @@ useEffect(() => {
     )
   }
 
+  const handleSkuLinkSaved = useCallback((order, item, masterId) => {
+    const key = purchaseItemKey(order, item)
+    setSkuLinks((current) => {
+      const next = { ...current }
+      if (masterId) next[key] = masterId
+      else delete next[key]
+      saveSkuLinksLocal(next)
+      saveSkuLinks(next)
+      return next
+    })
+  }, [])
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -2143,6 +2221,9 @@ useEffect(() => {
             formatVnd={formatVnd}
             onTrackingSaved={handleTrackingSaved}
             onRefreshTuanVinh={refreshOneTuanVinh}
+            skuMaster={skuMaster}
+            skuLinks={skuLinks}
+            onSkuLinkSaved={handleSkuLinkSaved}
             onClose={() => setSelectedOrder(null)}
             onImageClick={(image, name) => setViewer({ image, name })}
           />
