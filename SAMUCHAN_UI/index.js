@@ -2985,6 +2985,11 @@ const SKU_LINKS_FILE = path.join(
   'sku_links.json'
 );
 
+const SHOP_SALES_FILE = path.join(
+  DATA_DIR,
+  'shop_sales.json'
+);
+
 // ---------- Read JSON safely ----------
 async function readJsonFile(file, fallback) {
   try {
@@ -3211,6 +3216,74 @@ app.post(
     } catch (error) {
       console.error(
         '[SKU LINKS SAVE ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// ============================================================
+// SAMU.SHOP SALES API
+// ============================================================
+
+app.get(
+  '/api/shop/sales',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const data = await readJsonFile(
+        SHOP_SALES_FILE,
+        []
+      );
+
+      res.json({
+        success: true,
+        sales: Array.isArray(data) ? data : [],
+      });
+    } catch (error) {
+      console.error(
+        '[SHOP SALES GET ERROR]',
+        error
+      );
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/shop/sales',
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const sales = Array.isArray(req.body?.sales)
+        ? req.body.sales
+        : [];
+
+      await writeJsonFile(
+        SHOP_SALES_FILE,
+        sales
+      );
+
+      res.json({
+        success: true,
+        sales,
+      });
+    } catch (error) {
+      console.error(
+        '[SHOP SALES SAVE ERROR]',
         error
       );
 

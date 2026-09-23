@@ -538,6 +538,7 @@ const SKU_LINK_STORAGE = 'samuchan_sku_item_links_v1'
 
 // Railway API
 const SKU_API_BASE = '/api/sku'
+const SHOP_API_BASE = '/api/shop'
 
 // ---------- Local fallback ----------
 function loadSkuMaster() {
@@ -768,6 +769,32 @@ async function saveSkuLinks(data) {
 
     return false
   }
+}
+
+async function fetchShopSales() {
+  const response = await fetch(`${SHOP_API_BASE}/sales`, { cache: 'no-store' })
+  const result = await readApiJson(response)
+
+  if (!response.ok || !result?.success || !Array.isArray(result.sales)) {
+    throw new Error(result?.message || 'Khong doc duoc don SAMU.SHOP')
+  }
+
+  return result.sales
+}
+
+async function saveShopSales(data) {
+  const response = await fetch(`${SHOP_API_BASE}/sales`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sales: data }),
+  })
+  const result = await readApiJson(response)
+
+  if (!response.ok || !result?.success) {
+    throw new Error(result?.message || 'Khong luu duoc don SAMU.SHOP')
+  }
+
+  return result.sales
 }
 function purchaseItemKey(order, item) {
   return [
@@ -1510,11 +1537,10 @@ VD:
   )
 }
 
-function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, setSales, skuLinks }) {
+function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, onSalesChange, skuLinks, salesLoading, salesError }) {
   const [editingSale, setEditingSale] = useState(null)
+  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
-
-  useEffect(() => { localStorage.setItem('samuchan_shop_sales_v1', JSON.stringify(sales)) }, [sales])
 
   const costBySku = (id) => {
     let qty = 0; let total = 0; let purchaseShipping = 0
@@ -1527,13 +1553,21 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, setSales,
     return qty ? (total / qty) * Number(exchangeRate || 0) + (purchaseShipping / qty) : 0
   }
 
-  const addSale = () => {
+  const addSale = async () => {
     const quantity = Number(form.quantity || 0); const revenue = Number(form.revenue || 0)
     if (!form.sku || quantity <= 0 || revenue < 0) return
     const record = { id: editingSale || Date.now(), ...form, quantity, revenue, shipping: Number(form.shipping || 0), date: new Date().toISOString() }
-    setSales(editingSale ? sales.map((sale) => sale.id === editingSale ? record : sale) : [...sales, record])
-    setEditingSale(null)
-    setForm({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
+    const next = editingSale ? sales.map((sale) => sale.id === editingSale ? record : sale) : [...sales, record]
+
+    setSaving(true)
+    try {
+      const saved = await onSalesChange(next)
+      if (!saved) return
+      setEditingSale(null)
+      setForm({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const editSale = (sale) => { setForm({ sku: sale.sku, quantity: sale.quantity, revenue: sale.revenue, shipping: sale.shipping, purchaseOrderId: sale.purchaseOrderId || '' }); setEditingSale(sale.id) }
@@ -1549,7 +1583,8 @@ function ShopPage({ skuMaster, orders, exchangeRate, formatVnd, sales, setSales,
 
   return <main className="dashboard">
     <section className="page-heading"><div><p className="eyebrow">SAMU.SHOP</p><h1>Doanh thu & lợi nhuận</h1><p className="heading-description">Theo dõi số lượng bán, doanh thu, giá vốn và lợi nhuận theo SKU.</p></div></section>
-    <section className="orders-card shop-entry-card"><h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2><div className="shop-entry-grid"><select value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}><option value="">Chọn SKU</option>{skuMaster.map((sku) => <option key={sku.id} value={sku.id}>{sku.id} — {sku.name}</option>)}</select><select value={form.purchaseOrderId} onChange={(e) => setForm({ ...form, purchaseOrderId: e.target.value })}><option value="">Chọn Order Purchase</option>{orders.map((order) => <option key={order.order_id} value={order.order_id}>#{order.order_id}</option>)}</select><input type="number" min="1" placeholder="Số lượng" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /><input type="number" min="0" placeholder="Doanh thu (₫)" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /><input type="number" min="0" placeholder="Phí VC Việt Nam (₫)" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: e.target.value })} /><button type="button" onClick={addSale}>{editingSale ? 'Lưu sửa' : '+ Thêm'}</button></div></section>
+    {salesError && <div className="error-box">⚠️ {salesError}</div>}
+    <section className="orders-card shop-entry-card"><h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2><div className="shop-entry-grid"><select disabled={salesLoading || saving} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}><option value="">Chọn SKU</option>{skuMaster.map((sku) => <option key={sku.id} value={sku.id}>{sku.id} — {sku.name}</option>)}</select><select disabled={salesLoading || saving} value={form.purchaseOrderId} onChange={(e) => setForm({ ...form, purchaseOrderId: e.target.value })}><option value="">Chọn Order Purchase</option>{orders.map((order) => <option key={order.order_id} value={order.order_id}>#{order.order_id}</option>)}</select><input disabled={salesLoading || saving} type="number" min="1" placeholder="Số lượng" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /><input disabled={salesLoading || saving} type="number" min="0" placeholder="Doanh thu (₫)" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /><input disabled={salesLoading || saving} type="number" min="0" placeholder="Phí VC Việt Nam (₫)" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: e.target.value })} /><button type="button" onClick={addSale} disabled={salesLoading || saving}>{salesLoading ? 'Đang tải...' : saving ? 'Đang lưu...' : editingSale ? 'Lưu sửa' : '+ Thêm'}</button></div></section>
     <section className="orders-card shop-table"><div className="shop-table-head"><strong>Ảnh / SKU</strong><strong>Đã bán</strong><strong>Doanh thu</strong><strong>Giá vốn</strong><strong>Phí VC VN</strong><strong>Lợi nhuận</strong><strong>Thao tác</strong></div>{rows.map((row) => <div className="shop-table-row" key={row.id}><strong className="shop-product"><span className="shop-product-image">{row.image ? <img src={row.image} alt={row.name} /> : '🛍️'}</span><span>{row.id}<small>{row.name}</small></span></strong><span>{row.quantity}</span><span>{formatVnd(row.revenue)}</span><span>{row.cost ? formatVnd(row.cost) : 'Chưa có giá vốn'}</span><span>{formatVnd(row.shipping)}</span><strong className={row.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(row.profit)}</strong><button type="button" className="shop-edit" onClick={() => editSale(sales.find((sale) => sale.sku === row.id))}>Sửa</button></div>)}</section>
   </main>
 }
@@ -1611,17 +1646,61 @@ const [skuLinks, setSkuLinks] = useState(() =>
   loadSkuLinks()
 )
 
-const [shopSales, setShopSales] = useState(() => {
-  try {
-    return JSON.parse(
-      localStorage.getItem(
-        'samuchan_shop_sales_v1'
-      ) || '[]'
-    )
-  } catch {
-    return []
+const [shopSales, setShopSales] = useState([])
+const [shopSalesLoading, setShopSalesLoading] = useState(true)
+const [shopSalesError, setShopSalesError] = useState('')
+
+useEffect(() => {
+  let cancelled = false
+
+  async function loadRemoteShopSales() {
+    try {
+      const remoteSales = await fetchShopSales()
+      if (cancelled) return
+
+      // Migrate existing browser data once, then remove the local copy.
+      let legacySales = []
+      try {
+        const parsed = JSON.parse(localStorage.getItem('samuchan_shop_sales_v1') || '[]')
+        legacySales = Array.isArray(parsed) ? parsed : []
+      } catch {}
+
+      if (remoteSales.length === 0 && legacySales.length > 0) {
+        const migrated = await saveShopSales(legacySales)
+        if (cancelled) return
+        setShopSales(migrated)
+      } else {
+        setShopSales(remoteSales)
+      }
+
+      try { localStorage.removeItem('samuchan_shop_sales_v1') } catch {}
+      setShopSalesError('')
+    } catch (error) {
+      if (!cancelled) {
+        setShopSales([])
+        setShopSalesError(error.message || 'Khong doc duoc don SAMU.SHOP tu Railway')
+      }
+    } finally {
+      if (!cancelled) setShopSalesLoading(false)
+    }
   }
-})
+
+  loadRemoteShopSales()
+
+  return () => { cancelled = true }
+}, [])
+
+const saveRemoteShopSales = useCallback(async (nextSales) => {
+  try {
+    const saved = await saveShopSales(nextSales)
+    setShopSales(saved)
+    setShopSalesError('')
+    return true
+  } catch (error) {
+    setShopSalesError(error.message || 'Khong luu duoc don SAMU.SHOP len Railway')
+    return false
+  }
+}, [])
 
 // ============================================================
 //  LOAD SKU FROM RAILWAY
@@ -2094,7 +2173,7 @@ useEffect(() => {
     onRefreshPurchases={syncAll}
   />
 ) : activeTab === 'shop' ? (
-  <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} setSales={setShopSales} skuLinks={skuLinks} />
+  <ShopPage skuMaster={skuMaster} orders={orders} exchangeRate={exchangeRate} formatVnd={formatVnd} sales={shopSales} onSalesChange={saveRemoteShopSales} skuLinks={skuLinks} salesLoading={shopSalesLoading} salesError={shopSalesError} />
 ) : (
   <main className="dashboard">
         <section className="page-heading">
