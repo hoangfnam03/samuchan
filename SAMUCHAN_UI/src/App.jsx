@@ -540,6 +540,37 @@ const SETTINGS_API_BASE = '/api/settings'
 const SHOP_NAMES = ['SAMU.SHOP', 'DJK BAT', 'NOMORI HOME']
 const DEFAULT_SHOP_NAME = SHOP_NAMES[0]
 
+const SALES_CHANNELS = [
+  { value: 'shopee', label: 'Shopee' },
+  { value: 'tiktok-shop', label: 'TikTok Shop' },
+  { value: 'threads', label: 'Threads' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'website', label: 'Website' },
+  { value: 'zalo', label: 'Zalo' },
+  { value: 'outside', label: 'Ngoài sàn' },
+]
+
+const DELIVERY_CARRIERS = [
+  { value: 'spx', label: 'SPX Express' },
+  { value: 'ghn', label: 'GHN' },
+  { value: 'ghtk', label: 'GHTK' },
+  { value: 'jt', label: 'J&T Express' },
+  { value: 'viettel-post', label: 'Viettel Post' },
+  { value: 'ninja-van', label: 'Ninja Van' },
+  { value: 'grab', label: 'GrabExpress' },
+  { value: 'ahamove', label: 'Ahamove' },
+  { value: 'other', label: 'Khác' },
+]
+
+function salesChannelLabel(value) {
+  return SALES_CHANNELS.find((item) => item.value === value)?.label || 'Chưa chọn'
+}
+
+function carrierLabel(value) {
+  return DELIVERY_CARRIERS.find((item) => item.value === value)?.label || ''
+}
+
 function normalizeShopName(value) {
   const name = String(value || '').trim().toUpperCase()
   return SHOP_NAMES.find((shopName) => shopName.toUpperCase() === name) || DEFAULT_SHOP_NAME
@@ -1536,11 +1567,11 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [selectedDay, setSelectedDay] = useState('all')
   const [selectedChartMonth, setSelectedChartMonth] = useState(null)
-  const [form, setForm] = useState({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
+  const [form, setForm] = useState({ sku: '', buyerName: '', salesChannel: '', carrier: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
 
   const resetForm = () => {
     setEditingSale(null)
-    setForm({ sku: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
+    setForm({ sku: '', buyerName: '', salesChannel: '', carrier: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
   }
 
   const getSaleDetails = (sale) => {
@@ -1596,12 +1627,25 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
   const addSale = async () => {
     const quantity = Number(form.quantity || 0)
     const revenue = Number(form.revenue || 0)
-    if (!form.sku || quantity <= 0 || revenue < 0 || !form.orderDate) return
+    if (!form.sku) {
+      alert('Vui lòng chọn SKU.')
+      return
+    }
+    if (quantity <= 0 || revenue < 0 || !form.orderDate) {
+      alert('Vui lòng nhập số lượng, doanh thu và ngày ra đơn hợp lệ.')
+      return
+    }
+    if (form.salesChannel === 'outside' && !form.carrier) {
+      alert('Vui lòng chọn đơn vị vận chuyển cho đơn ngoài sàn.')
+      return
+    }
 
     const record = {
       id: editingSale || Date.now(),
       ...form,
       shopName,
+      buyerName: String(form.buyerName || '').trim(),
+      carrier: form.salesChannel === 'outside' ? form.carrier : '',
       quantity,
       revenue,
       shipping: Number(form.shipping || 0),
@@ -1623,6 +1667,9 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
   const editSale = (sale) => {
     setForm({
       sku: sale.sku || '',
+      buyerName: sale.buyerName || '',
+      salesChannel: sale.salesChannel || '',
+      carrier: sale.carrier || '',
       quantity: sale.quantity || 1,
       revenue: sale.revenue ?? '',
       shipping: sale.shipping ?? '',
@@ -1683,6 +1730,9 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
       <h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2>
       <div className="shop-entry-grid">
         <label className="shop-form-field"><span>SKU</span><select disabled={salesLoading || saving} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}><option value="">Chọn SKU</option>{skuMaster.map((sku) => <option key={sku.id} value={sku.id}>{sku.id} — {sku.name}</option>)}</select></label>
+        <label className="shop-form-field"><span>Người mua</span><input disabled={salesLoading || saving} type="text" placeholder="Tên người mua" value={form.buyerName} onChange={(e) => setForm({ ...form, buyerName: e.target.value })} /></label>
+        <label className="shop-form-field"><span>Hình thức bán</span><select disabled={salesLoading || saving} value={form.salesChannel} onChange={(e) => setForm({ ...form, salesChannel: e.target.value, carrier: e.target.value === 'outside' ? form.carrier : '' })}><option value="">Chọn sàn / hình thức</option>{SALES_CHANNELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        {form.salesChannel === 'outside' && <label className="shop-form-field"><span>Đơn vị vận chuyển</span><select disabled={salesLoading || saving} value={form.carrier} onChange={(e) => setForm({ ...form, carrier: e.target.value })}><option value="">Chọn ĐVVC</option>{DELIVERY_CARRIERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
         <label className="shop-form-field"><span>Số lượng</span><input disabled={salesLoading || saving} type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></label>
         <label className="shop-form-field"><span>Doanh thu (₫)</span><input disabled={salesLoading || saving} type="number" min="0" value={form.revenue} onChange={(e) => setForm({ ...form, revenue: e.target.value })} /></label>
         <label className="shop-form-field"><span>Phí VC Việt Nam (₫)</span><input disabled={salesLoading || saving} type="number" min="0" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: e.target.value })} /></label>
@@ -1690,7 +1740,7 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
         <label className="shop-form-field"><span>Ngày hoàn thành</span><input disabled={salesLoading || saving} type="date" value={form.completedDate} onChange={(e) => setForm({ ...form, completedDate: e.target.value })} /></label>
         <div className="shop-form-actions"><button type="button" onClick={addSale} disabled={salesLoading || saving}>{salesLoading ? 'Đang tải...' : saving ? 'Đang lưu...' : editingSale ? 'Lưu sửa' : '+ Thêm đơn'}</button>{editingSale && <button type="button" className="tracking-cancel-button" onClick={resetForm} disabled={saving}>Hủy</button>}</div>
       </div>
-      <small className="shop-form-note">Ngày ra đơn là ngày dùng để lọc biểu đồ. Ngày hoàn thành có thể để trống và cập nhật sau khi đơn giao thành công.</small>
+       <small className="shop-form-note">Ngày ra đơn dùng để lọc biểu đồ. Chọn Ngoài sàn để nhập thêm ĐVVC như SPX hoặc GHN.</small>
     </section>
 
     <section className="orders-card shop-filter-card">
@@ -1702,7 +1752,7 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
 
     <section className="orders-card shop-chart-card"><div className="shop-chart-heading"><div><p className="eyebrow">BIỂU ĐỒ THEO THÁNG</p><h2>Doanh số / giá vốn / lợi nhuận</h2></div><small>Bấm vào một cột để xem số tiền chi tiết. Giá vốn = giá tệ quy đổi + phí VC Purchase + phí VC Việt Nam.</small></div>{monthlyRows.length ? <div className="shop-month-chart">{monthlyRows.map((row) => { const monthLabel = row.key === 'unknown' ? 'Chưa rõ ngày' : `${row.key.slice(5, 7)}/${row.key.slice(0, 4)}`; return <div className={`shop-month-column ${selectedChartMonth === row.key ? 'selected' : ''}`} key={row.key} role="button" tabIndex="0" onClick={() => setSelectedChartMonth(row.key)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedChartMonth(row.key) } }} aria-label={`Xem số tiền tháng ${monthLabel}`}><div className="shop-month-bars"><span className="shop-chart-bar shop-chart-revenue" style={{ height: `${row.revenue / chartMax * 100}%` }} title={`Doanh số: ${formatVnd(row.revenue)}`} /><span className="shop-chart-bar shop-chart-cost" style={{ height: `${row.cost / chartMax * 100}%` }} title={`Giá vốn: ${formatVnd(row.cost)}`} /><span className="shop-chart-bar shop-chart-profit" style={{ height: `${Math.max(0, row.profit) / chartMax * 100}%` }} title={`Lợi nhuận: ${formatVnd(row.profit)}`} /></div><strong>{monthLabel}</strong></div> })}</div> : <div className="empty-state">Chưa có dữ liệu trong khoảng thời gian này.</div>}{selectedChart && <div className="shop-chart-detail"><strong>Chi tiết tháng {selectedChart.key === 'unknown' ? 'chưa rõ ngày' : `${selectedChart.key.slice(5, 7)}/${selectedChart.key.slice(0, 4)}`}</strong><div><span><i className="legend-revenue" />Doanh số <b>{formatVnd(selectedChart.revenue)}</b></span><span><i className="legend-cost" />Giá vốn <b>{formatVnd(selectedChart.cost)}</b></span><span><i className="legend-profit" />Lợi nhuận <b className={selectedChart.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(selectedChart.profit)}</b></span></div></div>}<div className="chart-legend"><span className="legend-revenue" /> Doanh số <span className="legend-cost" /> Giá vốn <span className="legend-profit" /> Lợi nhuận</div></section>
 
-    <section className="orders-card shop-table"><div className="shop-table-scroll"><div className="shop-table-head"><strong>Đơn / SKU</strong><strong>SL</strong><strong>Doanh thu</strong><strong>Giá tệ gốc</strong><strong>Giá tệ quy đổi</strong><strong>VC Purchase</strong><strong>Cân nặng</strong><strong>VC Việt Nam</strong><strong>Tổng giá vốn</strong><strong>Ngày ra đơn</strong><strong>Ngày hoàn thành</strong><strong>Lợi nhuận</strong><strong>Thao tác</strong></div>{filteredSales.length ? filteredSales.map((sale) => { const sku = skuMaster.find((item) => item.id === sale.sku) || {}; const details = getSaleDetails(sale); return <div className="shop-table-row" key={`${sale.id}-${sale.sku}`}><strong className="shop-product"><span className="shop-product-image">{sku.image ? <img src={sku.image} alt={sku.name} /> : '🛍️'}</span><span>{sale.sku || '-'}<small>{sku.name || 'Chưa có SKU Master'}</small></span></strong><span>{details.quantity}</span><span>{formatVnd(details.revenue)}</span><span>¥{details.originalCny.toFixed(2)}</span><span>{formatVnd(details.originalVnd)}</span><span>{formatVnd(details.purchaseShipping)}</span><span>{details.weight > 0 ? `${details.weight.toFixed(2)} kg` : '-'}</span><span>{formatVnd(details.vietnamShipping)}</span><span>{formatVnd(details.totalCost)}</span><span>{sale.orderDate || localDateValue(sale.date) || '-'}</span><span>{sale.completedDate || '-'}</span><strong className={details.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(details.profit)}</strong><div className="shop-row-actions"><button type="button" className="shop-edit" onClick={() => editSale(sale)} disabled={saving}>Sửa</button><button type="button" className="shop-delete" onClick={() => deleteSale(sale)} disabled={saving}>Xóa</button></div></div> }) : <div className="empty-state">Chưa có đơn bán trong khoảng thời gian này.</div>}</div></section>
+    <section className="orders-card shop-table"><div className="shop-table-scroll"><div className="shop-table-head"><strong>Đơn / SKU</strong><strong>Người mua</strong><strong>Hình thức</strong><strong>SL</strong><strong>Doanh thu</strong><strong>Giá tệ gốc</strong><strong>Giá tệ quy đổi</strong><strong>VC Purchase</strong><strong>Cân nặng</strong><strong>VC Việt Nam</strong><strong>Tổng giá vốn</strong><strong>Ngày ra đơn</strong><strong>Ngày hoàn thành</strong><strong>Lợi nhuận</strong><strong>Thao tác</strong></div>{filteredSales.length ? filteredSales.map((sale) => { const sku = skuMaster.find((item) => item.id === sale.sku) || {}; const details = getSaleDetails(sale); return <div className="shop-table-row" key={`${sale.id}-${sale.sku}`}><strong className="shop-product"><span className="shop-product-image">{sku.image ? <img src={sku.image} alt={sku.name} /> : '🛍️'}</span><span>{sale.sku || '-'}<small>{sku.name || 'Chưa có SKU Master'}</small></span></strong><span>{sale.buyerName || '-'}</span><span>{salesChannelLabel(sale.salesChannel)}{sale.salesChannel === 'outside' && sale.carrier ? <small>{carrierLabel(sale.carrier)}</small> : null}</span><span>{details.quantity}</span><span>{formatVnd(details.revenue)}</span><span>¥{details.originalCny.toFixed(2)}</span><span>{formatVnd(details.originalVnd)}</span><span>{formatVnd(details.purchaseShipping)}</span><span>{details.weight > 0 ? `${details.weight.toFixed(2)} kg` : '-'}</span><span>{formatVnd(details.vietnamShipping)}</span><span>{formatVnd(details.totalCost)}</span><span>{sale.orderDate || localDateValue(sale.date) || '-'}</span><span>{sale.completedDate || '-'}</span><strong className={details.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(details.profit)}</strong><div className="shop-row-actions"><button type="button" className="shop-edit" onClick={() => editSale(sale)} disabled={saving}>Sửa</button><button type="button" className="shop-delete" onClick={() => deleteSale(sale)} disabled={saving}>Xóa</button></div></div> }) : <div className="empty-state">Chưa có đơn bán trong khoảng thời gian này.</div>}</div></section>
   </main>
 }
 
