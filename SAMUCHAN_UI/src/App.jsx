@@ -1829,7 +1829,11 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
     month.cost += details.totalCost
     month.profit += details.profit
   })
-  const monthlyRows = [...monthlyMap.values()].sort((a, b) => b.key.localeCompare(a.key))
+  const monthlyRows = [...monthlyMap.values()].sort((a, b) => {
+    if (a.key === 'unknown') return 1
+    if (b.key === 'unknown') return -1
+    return a.key.localeCompare(b.key)
+  })
   const chartMax = Math.max(1, ...monthlyRows.flatMap((row) => [row.revenue, row.cost, row.profit]))
   const selectedChart = monthlyRows.find((row) => row.key === selectedChartMonth) || null
   const totalRevenue = filteredSales.reduce((sum, sale) => sum + getSaleDetails(sale).revenue, 0)
