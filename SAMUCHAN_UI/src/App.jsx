@@ -105,6 +105,42 @@ function calculateShippingCost(weight) {
   return kg > 0 ? kg * shippingRatePerKg(kg) : 0
 }
 
+function calculateSaleFinancials(sale, orders, exchangeRate, skuMaster, skuLinks) {
+  const quantity = Number(sale.quantity || 0)
+  const selectedOrder = orders.find((order) => String(order.order_id) === String(sale.purchaseOrderId))
+  const sourceOrders = selectedOrder ? [selectedOrder] : orders
+  const matchingByOrder = sourceOrders.map((order) => {
+    const items = order.items.filter((item) => {
+      const linked = skuLinks?.[purchaseItemKey(order, item)] || getAutoMatchedSku(item, skuMaster)?.id
+      return linked === sale.sku
+    })
+    const quantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    const cny = items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price_cny || 0), 0)
+    const allQuantity = order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    return { order, quantity, cny, allQuantity }
+  }).filter((source) => source.quantity > 0)
+
+  const sourceQuantity = matchingByOrder.reduce((sum, source) => sum + source.quantity, 0)
+  const sourceCny = matchingByOrder.reduce((sum, source) => sum + source.cny, 0)
+  const unitCny = sourceQuantity > 0 ? sourceCny / sourceQuantity : 0
+  const originalVnd = unitCny * quantity * Number(exchangeRate || 0)
+
+  let purchaseShipping = 0
+  if (selectedOrder) {
+    const allQuantity = selectedOrder.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    purchaseShipping = calculateShippingCost(selectedOrder.tuanvinh?.weight_kg) * quantity / Math.max(1, allQuantity)
+  } else if (sourceQuantity > 0) {
+    const shippingTotal = matchingByOrder.reduce((sum, source) => (
+      sum + calculateShippingCost(source.order.tuanvinh?.weight_kg) * source.quantity / Math.max(1, source.allQuantity)
+    ), 0)
+    purchaseShipping = shippingTotal * quantity / sourceQuantity
+  }
+
+  const revenue = Number(sale.revenue || 0)
+  const totalCost = originalVnd + purchaseShipping + Number(sale.shipping || 0)
+  return { quantity, revenue, profit: revenue - totalCost }
+}
+
 function ProductImage({ src, name, onClick, large = false }) {
   const [failed, setFailed] = useState(false)
   if (!src || failed) return <div className={`product-placeholder ${large ? 'large' : ''}`}>🛍️</div>
@@ -872,6 +908,8 @@ function SkuMasterPage({
   skuMaster,
   setSkuMaster,
   orders,
+  sales = [],
+  salesOrders = orders,
   skuLinks,
   setSkuLinks,
   exchangeRate,
@@ -895,6 +933,19 @@ function SkuMasterPage({
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
   const [purchaseRefreshing, setPurchaseRefreshing] = useState(false)
+
+  const salesBySku = useMemo(() => {
+    const result = new Map()
+    sales.forEach((sale) => {
+      const stats = result.get(sale.sku) || { quantity: 0, revenue: 0, profit: 0 }
+      const details = calculateSaleFinancials(sale, salesOrders, exchangeRate, skuMaster, skuLinks)
+      stats.quantity += details.quantity
+      stats.revenue += details.revenue
+      stats.profit += details.profit
+      result.set(sale.sku, stats)
+    })
+    return result
+  }, [sales, salesOrders, exchangeRate, skuMaster, skuLinks])
 
   const resetForm = () => {
     setEditing(null)
@@ -1302,6 +1353,8 @@ VD:
 
               const stats =
                 getPurchaseStats(sku.id)
+              const saleStats =
+                salesBySku.get(sku.id) || { quantity: 0, revenue: 0, profit: 0 }
 
               return (
                 <div
@@ -1383,6 +1436,16 @@ VD:
                         <small>Phí vận chuyển</small>
                         <strong className="sku-vnd">{stats.totalShipping > 0 ? formatVnd(stats.totalShipping) : '—'}</strong>
                         <small>{stats.totalShipping > 0 ? `${formatVnd(stats.averageShipping)} / cái` : ''}</small>
+                      </div>
+                      <div className="sku-sales-stat">
+                        <small>Đã bán</small>
+                        <strong>{saleStats.quantity} cái</strong>
+                        <small>{saleStats.revenue > 0 ? `Doanh thu: ${formatVnd(saleStats.revenue)}` : 'Chưa có doanh thu'}</small>
+                      </div>
+                      <div className="sku-sales-stat sku-profit-stat">
+                        <small>Lợi nhuận</small>
+                        <strong className={saleStats.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(saleStats.profit)}</strong>
+                        <small>{saleStats.quantity > 0 ? `${formatVnd(saleStats.profit / saleStats.quantity)} / cái` : 'Chưa có đơn bán'}</small>
                       </div>
 
                     </div>
@@ -1814,7 +1877,7 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
 
     <div className="dashboard-cards shop-summary-cards"><div><span>Đơn bán</span><strong>{filteredSales.length}</strong></div><div><span>Doanh thu</span><strong>{formatVnd(totalRevenue)}</strong></div><div><span>Tổng giá vốn</span><strong>{formatVnd(totalCost)}</strong></div><div><span>Lợi nhuận</span><strong className={totalProfit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(totalProfit)}</strong></div></div>
 
-    <section className="orders-card shop-product-chart"><div className="shop-chart-heading"><div><p className="eyebrow">SẢN PHẨM BÁN CHẠY</p><h2>Xếp hạng theo số lượng bán</h2></div><small>Biểu đồ thay đổi theo bộ lọc ngày phía trên. Lợi nhuận đã tính giá vốn và phí vận chuyển của từng đơn.</small></div>{productRows.length ? <div className="shop-product-rows">{productRows.map((row) => <div className="shop-product-row" key={row.sku}><div className="shop-product-label"><strong>{row.sku}</strong><small>{row.name}</small></div><div className="shop-product-quantity"><div className="shop-product-track"><span className="shop-product-bar" style={{ width: `${row.quantity / productChartMax * 100}%` }} /></div><b>{row.quantity} cái</b></div><div className="shop-product-metric"><small>Doanh thu</small><strong>{formatVnd(row.revenue)}</strong></div><div className="shop-product-metric"><small>Lợi nhuận</small><strong className={row.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(row.profit)}</strong></div></div>)}</div> : <div className="empty-state">Chưa có dữ liệu sản phẩm trong khoảng thời gian này.</div>}</section>
+    <section className="orders-card shop-product-chart"><div className="shop-chart-heading"><div><p className="eyebrow">SẢN PHẨM BÁN CHẠY</p><h2>Xếp hạng theo số lượng bán</h2></div><small>Biểu đồ thay đổi theo bộ lọc ngày phía trên. Lợi nhuận đã tính giá vốn và phí vận chuyển của từng đơn.</small></div>{productRows.length ? <div className="shop-product-rows">{productRows.map((row) => <div className="shop-product-row" key={row.sku}><div className="shop-product-label"><strong>{row.sku}</strong><small>{row.name}</small></div><div className="shop-product-quantity"><div className="shop-product-track"><span className="shop-product-bar" style={{ width: `${row.quantity / productChartMax * 100}%` }} /></div><b>{row.quantity} cái</b></div><div className="shop-product-metric shop-product-revenue"><small>Doanh thu</small><strong>{formatVnd(row.revenue)}</strong></div><div className={`shop-product-metric shop-product-profit ${row.profit >= 0 ? 'is-positive' : 'is-negative'}`}><small>Lợi nhuận</small><strong className={row.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(row.profit)}</strong></div></div>)}</div> : <div className="empty-state">Chưa có dữ liệu sản phẩm trong khoảng thời gian này.</div>}</section>
 
     <section className="orders-card shop-chart-card"><div className="shop-chart-heading"><div><p className="eyebrow">BIỂU ĐỒ THEO THÁNG</p><h2>Doanh số / giá vốn / lợi nhuận</h2></div><small>Bấm vào một cột để xem số tiền chi tiết. Giá vốn = giá tệ quy đổi + phí VC Purchase + phí VC Việt Nam.</small></div>{monthlyRows.length ? <div className="shop-month-chart">{monthlyRows.map((row) => { const monthLabel = row.key === 'unknown' ? 'Chưa rõ ngày' : `${row.key.slice(5, 7)}/${row.key.slice(0, 4)}`; return <div className={`shop-month-column ${selectedChartMonth === row.key ? 'selected' : ''}`} key={row.key} role="button" tabIndex="0" onClick={() => setSelectedChartMonth(row.key)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedChartMonth(row.key) } }} aria-label={`Xem số tiền tháng ${monthLabel}`}><div className="shop-month-bars"><span className="shop-chart-bar shop-chart-revenue" style={{ height: `${row.revenue / chartMax * 100}%` }} title={`Doanh số: ${formatVnd(row.revenue)}`} /><span className="shop-chart-bar shop-chart-cost" style={{ height: `${row.cost / chartMax * 100}%` }} title={`Giá vốn: ${formatVnd(row.cost)}`} /><span className="shop-chart-bar shop-chart-profit" style={{ height: `${Math.max(0, row.profit) / chartMax * 100}%` }} title={`Lợi nhuận: ${formatVnd(row.profit)}`} /></div><strong>{monthLabel}</strong></div> })}</div> : <div className="empty-state">Chưa có dữ liệu trong khoảng thời gian này.</div>}{selectedChart && <div className="shop-chart-detail"><strong>Chi tiết tháng {selectedChart.key === 'unknown' ? 'chưa rõ ngày' : `${selectedChart.key.slice(5, 7)}/${selectedChart.key.slice(0, 4)}`}</strong><div><span><i className="legend-revenue" />Doanh số <b>{formatVnd(selectedChart.revenue)}</b></span><span><i className="legend-cost" />Giá vốn <b>{formatVnd(selectedChart.cost)}</b></span><span><i className="legend-profit" />Lợi nhuận <b className={selectedChart.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(selectedChart.profit)}</b></span></div></div>}<div className="chart-legend"><span className="legend-revenue" /> Doanh số <span className="legend-cost" /> Giá vốn <span className="legend-profit" /> Lợi nhuận</div></section>
 
@@ -2490,6 +2553,8 @@ useEffect(() => {
     skuMaster={skuMaster}
     setSkuMaster={setSkuMaster}
     orders={skuPurchaseOrders}
+    sales={shopSales}
+    salesOrders={orders}
     skuLinks={skuLinks}
     setSkuLinks={setSkuLinks}
     exchangeRate={exchangeRate}

@@ -956,12 +956,47 @@ code {
   display: grid;
   gap: 4px;
   justify-items: end;
+  padding: 9px 11px;
+  border-radius: 10px;
 }
 
 .shop-product-metric strong {
   color: #292a30;
   font-size: 13px;
   white-space: nowrap;
+}
+
+.shop-product-revenue {
+  border: 1px solid #d7e8ff;
+  background: linear-gradient(135deg, #f3f8ff, #e5f1ff);
+}
+
+.shop-product-revenue small,
+.shop-product-revenue strong {
+  color: #2371bd;
+}
+
+.shop-product-profit {
+  border: 1px solid #d8efdf;
+}
+
+.shop-product-profit.is-positive {
+  background: linear-gradient(135deg, #f1fff5, #dcf8e6);
+}
+
+.shop-product-profit.is-negative {
+  border-color: #f3d3d3;
+  background: linear-gradient(135deg, #fff7f7, #ffe8e8);
+}
+
+.shop-product-profit.is-positive small,
+.shop-product-profit.is-positive strong {
+  color: #21865b;
+}
+
+.shop-product-profit.is-negative small,
+.shop-product-profit.is-negative strong {
+  color: #c44747;
 }
 
 .shop-chart-heading {
@@ -1805,6 +1840,7 @@ code {
 
 .sku-master-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 25px;
   margin-top: 13px;
 }
@@ -1823,6 +1859,31 @@ code {
 .sku-master-stats strong {
   font-size: 14px;
   color: #222;
+}
+
+.sku-sales-stat {
+  min-width: 92px;
+  padding: 8px 10px;
+  border: 1px solid #d7e8ff;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f3f8ff, #e5f1ff);
+}
+
+.sku-sales-stat strong {
+  color: #2371bd;
+}
+
+.sku-profit-stat {
+  border-color: #d8efdf;
+  background: linear-gradient(135deg, #f1fff5, #dcf8e6);
+}
+
+.sku-profit-stat strong.profit-positive {
+  color: #21865b;
+}
+
+.sku-profit-stat strong.profit-negative {
+  color: #c44747;
 }
 
 .sku-master-actions {
