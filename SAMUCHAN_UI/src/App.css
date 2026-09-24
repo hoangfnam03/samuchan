@@ -1879,6 +1879,24 @@ code {
   color: #2371bd;
 }
 
+.sku-inventory-stat {
+  border-color: #f2dfb2;
+  background: linear-gradient(135deg, #fffaf0, #fff1cc);
+}
+
+.sku-inventory-stat strong {
+  color: #a66a00;
+}
+
+.sku-inventory-stat.sku-inventory-negative {
+  border-color: #f2caca;
+  background: linear-gradient(135deg, #fff5f5, #ffe4e4);
+}
+
+.sku-inventory-stat.sku-inventory-negative strong {
+  color: #c44747;
+}
+
 .sku-profit-stat {
   border-color: #d8efdf;
   background: linear-gradient(135deg, #f1fff5, #dcf8e6);

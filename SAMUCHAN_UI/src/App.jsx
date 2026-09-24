@@ -1442,6 +1442,11 @@ VD:
                         <strong>{saleStats.quantity} cái</strong>
                         <small>{saleStats.revenue > 0 ? `Doanh thu: ${formatVnd(saleStats.revenue)}` : 'Chưa có doanh thu'}</small>
                       </div>
+                      <div className={`sku-sales-stat sku-inventory-stat ${stats.quantity - saleStats.quantity < 0 ? 'sku-inventory-negative' : ''}`}>
+                        <small>Tồn kho</small>
+                        <strong>{stats.quantity - saleStats.quantity} cái</strong>
+                        <small>Đã mua - Đã bán</small>
+                      </div>
                       <div className="sku-sales-stat sku-profit-stat">
                         <small>Lợi nhuận</small>
                         <strong className={saleStats.profit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(saleStats.profit)}</strong>
