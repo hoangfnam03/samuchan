@@ -854,6 +854,12 @@ code {
   font-size: 11px;
 }
 
+.shop-form-note,
+.shop-product-chart > .shop-chart-heading,
+.shop-chart-card > .shop-chart-heading {
+  display: none;
+}
+
 .shop-filter-card {
   display: flex;
   align-items: center;
