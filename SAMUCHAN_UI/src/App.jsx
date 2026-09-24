@@ -1567,10 +1567,31 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [selectedDay, setSelectedDay] = useState('all')
   const [selectedChartMonth, setSelectedChartMonth] = useState(null)
+  const [buyerSuggestionsOpen, setBuyerSuggestionsOpen] = useState(false)
   const [form, setForm] = useState({ sku: '', buyerName: '', salesChannel: '', carrier: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
+
+  const buyerNames = useMemo(() => {
+    const seen = new Set()
+    return [...sales].reverse().reduce((names, sale) => {
+      const name = String(sale.buyerName || '').trim()
+      const key = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      if (name && !seen.has(key)) {
+        seen.add(key)
+        names.push(name)
+      }
+      return names
+    }, [])
+  }, [sales])
+
+  const matchingBuyerNames = useMemo(() => {
+    const query = String(form.buyerName || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    if (!query) return buyerNames
+    return buyerNames.filter((name) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(query))
+  }, [buyerNames, form.buyerName])
 
   const resetForm = () => {
     setEditingSale(null)
+    setBuyerSuggestionsOpen(false)
     setForm({ sku: '', buyerName: '', salesChannel: '', carrier: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
   }
 
@@ -1730,7 +1751,7 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
       <h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2>
       <div className="shop-entry-grid">
         <label className="shop-form-field"><span>SKU</span><select disabled={salesLoading || saving} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}><option value="">Chọn SKU</option>{skuMaster.map((sku) => <option key={sku.id} value={sku.id}>{sku.id} — {sku.name}</option>)}</select></label>
-        <label className="shop-form-field"><span>Người mua</span><input disabled={salesLoading || saving} type="text" placeholder="Tên người mua" value={form.buyerName} onChange={(e) => setForm({ ...form, buyerName: e.target.value })} /></label>
+        <label className="shop-form-field buyer-autocomplete-field"><span>Người mua</span><div className="buyer-autocomplete"><input disabled={salesLoading || saving} type="text" placeholder="Tên người mua" value={form.buyerName} onFocus={() => setBuyerSuggestionsOpen(true)} onBlur={() => setBuyerSuggestionsOpen(false)} onChange={(e) => { setForm({ ...form, buyerName: e.target.value }); setBuyerSuggestionsOpen(true) }} /><div className={`buyer-suggestions ${buyerSuggestionsOpen && matchingBuyerNames.length ? 'is-open' : ''}`} role="listbox">{matchingBuyerNames.map((name) => <button type="button" key={name} role="option" onMouseDown={(event) => { event.preventDefault(); setForm({ ...form, buyerName: name }); setBuyerSuggestionsOpen(false) }}>{name}</button>)}</div></div></label>
         <label className="shop-form-field"><span>Hình thức bán</span><select disabled={salesLoading || saving} value={form.salesChannel} onChange={(e) => setForm({ ...form, salesChannel: e.target.value, carrier: e.target.value === 'outside' ? form.carrier : '' })}><option value="">Chọn sàn / hình thức</option>{SALES_CHANNELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         {form.salesChannel === 'outside' && <label className="shop-form-field"><span>Đơn vị vận chuyển</span><select disabled={salesLoading || saving} value={form.carrier} onChange={(e) => setForm({ ...form, carrier: e.target.value })}><option value="">Chọn ĐVVC</option>{DELIVERY_CARRIERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
         <label className="shop-form-field"><span>Số lượng</span><input disabled={salesLoading || saving} type="number" min="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></label>
