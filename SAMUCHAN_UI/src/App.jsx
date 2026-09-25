@@ -944,7 +944,11 @@ function SkuAutocomplete({ skuMaster, value, onChange, disabled, skuPrefix = '',
   const normalizedSearch = search.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const filteredSkus = availableSkus.filter((sku) => {
     if (!normalizedSearch) return true
-    return `${sku.id} ${sku.name || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(normalizedSearch)
+    return `${sku.id} ${sku.name || ''} ${(sku.taobao_skus || []).join(' ')}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .includes(normalizedSearch)
   })
   const showClearOption = !normalizedSearch || 'chua phan loai'.includes(normalizedSearch)
   const inputValue = open ? search : selectedSku ? `${selectedSku.id} — ${selectedSku.name}` : search
@@ -958,7 +962,7 @@ function SkuAutocomplete({ skuMaster, value, onChange, disabled, skuPrefix = '',
       value={inputValue}
       onFocus={() => { setSearch(''); setOpen(true) }}
       onBlur={() => setOpen(false)}
-      onChange={(event) => { setSearch(event.target.value); setOpen(true); onChange('') }}
+      onChange={(event) => { setSearch(event.target.value); setOpen(true) }}
     />
     <div className={`sku-suggestions ${open && (filteredSkus.length || showClearOption) ? 'is-open' : ''}`} role="listbox">
       {showClearOption && <button type="button" className="sku-suggestions-clear" role="option" onMouseDown={(event) => { event.preventDefault(); onChange(''); setSearch(''); setOpen(false) }}>
