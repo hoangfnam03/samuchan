@@ -1801,6 +1801,124 @@ code {
   overflow: hidden;
 }
 
+.sku-shop-filter-section {
+  padding: 18px 18px 0;
+  border-bottom: 1px solid #ececf1;
+}
+
+.sku-shop-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 13px;
+}
+
+.sku-shop-filter-heading .eyebrow {
+  margin: 0 0 4px;
+}
+
+.sku-shop-filter-heading strong {
+  color: #343642;
+  font-size: 13px;
+}
+
+.sku-shop-reset {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f0ebff;
+  color: #7049d2;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sku-shop-filter-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-bottom: 18px;
+}
+
+.sku-shop-filter-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid #e2e2ea;
+  border-radius: 12px;
+  background: #fff;
+  color: #4b4d58;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.sku-shop-filter-card:hover {
+  border-color: #b9a7ef;
+  background: #fbfaff;
+}
+
+.sku-shop-filter-card.active {
+  border-color: #7652df;
+  background: #f4f0ff;
+  box-shadow: 0 5px 14px rgba(118, 82, 223, .12);
+}
+
+.sku-shop-filter-icon {
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #f0ebff;
+  font-size: 17px;
+}
+
+.sku-shop-filter-icon-djk { background: #e9f1ff; }
+.sku-shop-filter-icon-samu { background: #fff0f5; }
+.sku-shop-filter-icon-nomori { background: #eefaf3; }
+
+.sku-shop-filter-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sku-shop-filter-copy strong {
+  overflow: hidden;
+  color: #343642;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sku-shop-filter-copy small {
+  overflow: hidden;
+  color: #92939d;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sku-shop-filter-card > b {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eee9ff;
+  color: #7049d2;
+  font-size: 11px;
+}
+
 .sku-master-list {
   display: flex;
   flex-direction: column;
@@ -2104,6 +2222,15 @@ code {
 
   .sku-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sku-shop-filter-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .sku-shop-filter-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .sku-image-editor {

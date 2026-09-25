@@ -914,6 +914,12 @@ function SkuAutocomplete({ skuMaster, value, onChange, disabled, ariaLabel = 'T�
   </div>
 }
 
+const SKU_SHOP_FILTERS = [
+  { key: 'DJK', label: 'DJK BAT', description: 'SKU bắt đầu bằng DJK', icon: '🛍️' },
+  { key: 'SAMU', label: 'SAMU.SHOP', description: 'SKU bắt đầu bằng SAMU', icon: '🎁' },
+  { key: 'NOMORI', label: 'NOMORI HOME', description: 'SKU bắt đầu bằng NOMORI', icon: '🏠' },
+]
+
 function SkuMasterPage({
   skuMaster,
   setSkuMaster,
@@ -942,6 +948,7 @@ function SkuMasterPage({
   const [taobaoSkus, setTaobaoSkus] = useState('')
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
+  const [selectedShop, setSelectedShop] = useState('all')
   const [purchaseRefreshing, setPurchaseRefreshing] = useState(false)
 
   const salesBySku = useMemo(() => {
@@ -1081,6 +1088,9 @@ function SkuMasterPage({
   }
 
   const filtered = skuMaster.filter((sku) => {
+    const skuId = String(sku.id || '').trim().toUpperCase()
+    if (selectedShop !== 'all' && !skuId.startsWith(selectedShop)) return false
+
     const keyword = search.trim().toLowerCase()
 
     if (!keyword) return true
@@ -1096,6 +1106,10 @@ function SkuMasterPage({
       .toLowerCase()
       .includes(keyword)
   })
+
+  const shopSkuCount = (prefix) => skuMaster.filter((sku) => (
+    String(sku.id || '').trim().toUpperCase().startsWith(prefix)
+  )).length
 
   const getPurchaseStats = (masterId) => {
     let quantity = 0
@@ -1323,6 +1337,42 @@ VD:
       {/* ================================================== */}
 
       <section className="orders-card sku-master-card">
+
+        <div className="sku-shop-filter-section">
+          <div className="sku-shop-filter-heading">
+            <div>
+              <p className="eyebrow">PHÂN LOẠI THEO SHOP</p>
+              <strong>Chọn shop để xem danh mục SKU</strong>
+            </div>
+            {selectedShop !== 'all' && (
+              <button type="button" className="sku-shop-reset" onClick={() => setSelectedShop('all')}>
+                Xem tất cả SKU
+              </button>
+            )}
+          </div>
+
+          <div className="sku-shop-filter-cards">
+            {SKU_SHOP_FILTERS.map((shop) => {
+              const count = shopSkuCount(shop.key)
+              return (
+                <button
+                  type="button"
+                  key={shop.key}
+                  className={`sku-shop-filter-card ${selectedShop === shop.key ? 'active' : ''}`}
+                  onClick={() => setSelectedShop(shop.key)}
+                  aria-pressed={selectedShop === shop.key}
+                >
+                  <span className={`sku-shop-filter-icon sku-shop-filter-icon-${shop.key.toLowerCase()}`}>{shop.icon}</span>
+                  <span className="sku-shop-filter-copy">
+                    <strong>{shop.label}</strong>
+                    <small>{shop.description}</small>
+                  </span>
+                  <b>{count}</b>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         <div className="toolbar">
 
