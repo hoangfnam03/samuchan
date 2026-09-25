@@ -880,12 +880,15 @@ function getAutoMatchedSku(item, skuMaster) {
   ) || null
 }
 
-function SkuAutocomplete({ skuMaster, value, onChange, disabled, ariaLabel = 'Tìm SKU hoặc tên sản phẩm' }) {
+function SkuAutocomplete({ skuMaster, value, onChange, disabled, skuPrefix = '', ariaLabel = 'Tìm SKU hoặc tên sản phẩm' }) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const selectedSku = skuMaster.find((sku) => sku.id === value)
+  const availableSkus = skuPrefix
+    ? skuMaster.filter((sku) => String(sku.id || '').trim().toUpperCase().startsWith(skuPrefix))
+    : skuMaster
   const normalizedSearch = search.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  const filteredSkus = skuMaster.filter((sku) => {
+  const filteredSkus = availableSkus.filter((sku) => {
     if (!normalizedSearch) return true
     return `${sku.id} ${sku.name || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(normalizedSearch)
   })
@@ -1925,7 +1928,7 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
     <section className="orders-card shop-entry-card">
       <h2>{editingSale ? 'Sửa đơn bán' : 'Thêm đơn bán'}</h2>
       <div className="shop-entry-grid">
-        <label className="shop-form-field"><span>SKU</span><SkuAutocomplete disabled={salesLoading || saving} skuMaster={skuMaster} value={form.sku} onChange={(sku) => setForm({ ...form, sku })} /></label>
+        <label className="shop-form-field"><span>SKU</span><SkuAutocomplete disabled={salesLoading || saving} skuMaster={skuMaster} skuPrefix={SKU_SHOP_FILTERS.find((shop) => shop.label === shopName)?.key || ''} value={form.sku} onChange={(sku) => setForm({ ...form, sku })} /></label>
         <label className="shop-form-field buyer-autocomplete-field"><span>Người mua</span><div className="buyer-autocomplete"><input disabled={salesLoading || saving} type="text" placeholder="Tên người mua" value={form.buyerName} onFocus={() => setBuyerSuggestionsOpen(true)} onBlur={() => setBuyerSuggestionsOpen(false)} onChange={(e) => { setForm({ ...form, buyerName: e.target.value }); setBuyerSuggestionsOpen(true) }} /><div className={`buyer-suggestions ${buyerSuggestionsOpen && matchingBuyerNames.length ? 'is-open' : ''}`} role="listbox">{matchingBuyerNames.map((name) => <button type="button" key={name} role="option" onMouseDown={(event) => { event.preventDefault(); setForm({ ...form, buyerName: name }); setBuyerSuggestionsOpen(false) }}>{name}</button>)}</div></div></label>
         <label className="shop-form-field"><span>Hình thức bán</span><select disabled={salesLoading || saving} value={form.salesChannel} onChange={(e) => setForm({ ...form, salesChannel: e.target.value, carrier: e.target.value === 'outside' ? form.carrier : '' })}><option value="">Chọn sàn / hình thức</option>{SALES_CHANNELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         {form.salesChannel === 'outside' && <label className="shop-form-field"><span>Đơn vị vận chuyển</span><select disabled={salesLoading || saving} value={form.carrier} onChange={(e) => setForm({ ...form, carrier: e.target.value })}><option value="">Chọn ĐVVC</option>{DELIVERY_CARRIERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>}
