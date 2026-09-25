@@ -216,6 +216,12 @@ def get_order_candidates(page):
     selectors = [
         "div.trade-container-shopOrderContainer",
         "div[class*='trade-container-shopOrderContainer']",
+        "div[id*='shopOrderContainer']",
+        "div[id*='orderColContainer']",
+        "div[class*='order-container']",
+        "div[class*='orderContainer']",
+        "div[class*='order-card']",
+        "[data-order-id]",
     ]
 
     for selector in selectors:
@@ -230,11 +236,64 @@ def get_order_candidates(page):
                             visible.append(loc.nth(i))
                     except Exception:
                         pass
+                if selector not in {
+                    "div.trade-container-shopOrderContainer",
+                    "div[class*='trade-container-shopOrderContainer']",
+                }:
+                    visible = [
+                        item for item in visible
+                        if extract_order_id(item)
+                    ]
                 print(f"\n🔎 Order container: {selector}")
                 print(f"✓ Tìm được {len(visible)} ORDER CARD")
-                return visible
+                # Một số phiên bản Taobao vẫn giữ template cũ trong DOM
+                # nhưng ẩn nó. Chỉ dừng khi thật sự có card đang hiển thị.
+                if visible:
+                    return visible
         except Exception:
             pass
+
+    # Fallback cuối: tìm các block có mã đơn trong text. Cách này chịu được
+    # việc Taobao đổi tên class CSS, miễn là nội dung "订单号" vẫn còn.
+    try:
+        all_blocks = page.locator(
+            "div[class*='order'], div[id*='order'], "
+            "div[class*='trade'], div[id*='trade'], "
+            "div[class*='shop'], div[id*='shop']"
+        )
+        matches = {}
+        for i in range(min(all_blocks.count(), 4000)):
+            block = all_blocks.nth(i)
+            try:
+                if not block.is_visible():
+                    continue
+                order_id = extract_order_id(block)
+                if not order_id:
+                    continue
+                class_name = (
+                    block.get_attribute("class") or ""
+                ).lower()
+                block_id = (block.get_attribute("id") or "").lower()
+                if not any(
+                    word in f"{class_name} {block_id}"
+                    for word in ("order", "trade", "shop")
+                ):
+                    continue
+                text_length = len(safe_inner_text(block, 1200))
+                current = matches.get(order_id)
+                if current is None or text_length < current[0]:
+                    matches[order_id] = (text_length, block)
+            except Exception:
+                continue
+
+        fallback = [item[1] for item in matches.values()]
+        if fallback:
+            print(
+                f"\n🔎 Fallback text ORDER CARD: {len(fallback)} card"
+            )
+            return fallback
+    except Exception:
+        pass
 
     print("❌ Không tìm thấy ORDER CARD")
     save_debug_page(page, "order_container_not_found")
@@ -262,6 +321,28 @@ def extract_order_id(order):
             return m.group(1)
     except Exception:
         pass
+
+    for attr in ("data-order-id", "data-orderid", "data-id"):
+        try:
+            value = order.get_attribute(attr) or ""
+            m = re.search(r"([0-9]{10,30})", value)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+
+    try:
+        text = safe_inner_text(order, 1200)
+        m = re.search(
+            r"(?:订单号|订单编号|Order\s*ID)\s*[:：#]?\s*([0-9]{10,30})",
+            text,
+            re.I,
+        )
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+
     return None
 
 
@@ -1178,6 +1259,26 @@ def scrape_orders(page):
     )
 
     if not orders:
+        try:
+            url = page.url
+            body_text = safe_inner_text(page.locator("body"), 2000).lower()
+            if "passport.taobao.com" in url.lower() or any(
+                keyword in body_text
+                for keyword in ("请登录", "登录淘宝", "扫码登录", "验证码")
+            ):
+                raise RuntimeError(
+                    "Taobao hết phiên đăng nhập trên Railway. "
+                    "Cần cập nhật lại taobao_storage_state.json."
+                )
+            raise RuntimeError(
+                "Không tìm thấy order card trên Taobao "
+                f"(URL: {url}). Có thể giao diện Taobao đã đổi hoặc trang "
+                "chưa tải xong; dữ liệu cũ chưa bị thay đổi."
+            )
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
         raise RuntimeError(
             "Taobao scrape trả về 0 đơn. Không cập nhật dữ liệu cũ."
         )
