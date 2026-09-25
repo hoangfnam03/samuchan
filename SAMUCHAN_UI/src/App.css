@@ -37,6 +37,9 @@ button {
   justify-content: space-between;
   background: #ffffff;
   border-bottom: 1px solid #e8e9ef;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .brand {
@@ -1855,6 +1858,9 @@ code {
   gap: 8px;
   padding: 18px 32px 0;
   background: #f7f7f9;
+  position: sticky;
+  top: 78px;
+  z-index: 99;
 }
 
 .samuchan-tabs button {
