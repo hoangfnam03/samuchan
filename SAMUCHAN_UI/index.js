@@ -868,6 +868,34 @@ function parseCurrentStatus(
   return status;
 }
 
+const VIETNAM_EXIT_STATUS = 'Đã xuất kho Việt Nam';
+
+function hasVietnamExit(data) {
+  const history = Array.isArray(data) ? data : data?.history;
+  const currentStatus = Array.isArray(data)
+    ? ''
+    : String(data?.current_status || data?.status || '');
+
+  if (currentStatus.toLowerCase().includes('xuất kho việt nam')) return true;
+
+  return Array.isArray(history) && history.some((item) => {
+    const text = typeof item === 'string'
+      ? item
+      : String(item?.status || item?.name || item?.text || '');
+
+    return text.toLowerCase().includes('xuất kho việt nam');
+  });
+}
+
+function normalizeTuanVinhStatus(result) {
+  if (!result || !hasVietnamExit(result)) return result;
+
+  return {
+    ...result,
+    current_status: VIETNAM_EXIT_STATUS,
+  };
+}
+
 // ============================================================
 // PARSE HISTORY
 // ============================================================
@@ -1058,6 +1086,9 @@ function parseTuanVinhHtml(
       block
     );
 
+  result.current_status =
+    normalizeTuanVinhStatus(result).current_status;
+
   // ----------------------------------------------------------
   // SUCCESS
   // ----------------------------------------------------------
@@ -1236,10 +1267,8 @@ async function trackTuanVinh(
         );
 
         return {
-          ...cached,
-
-          cached:
-            true,
+          ...normalizeTuanVinhStatus(cached),
+          cached: true,
         };
       }
     }
@@ -1526,23 +1555,7 @@ async function saveTuanVinhToOrder(
     return false;
   }
 
-  const hasExitedVietnam =
-    Array.isArray(tv?.history) &&
-    tv.history.some((item) => {
-      const text =
-        typeof item === 'string'
-          ? item
-          : String(
-              item?.status ||
-              item?.name ||
-              item?.text ||
-              ''
-            );
-
-      return text.includes(
-        'Xuất kho Việt Nam'
-      );
-    });
+  const hasExitedVietnam = hasVietnamExit(tv);
 
   const payload =
     await readTaobaoOrders();
@@ -1582,11 +1595,10 @@ async function saveTuanVinhToOrder(
             hasExitedVietnam,
         };
 
-        if (
-          tv.current_status
-        ) {
-          updated.status =
-            tv.current_status;
+        if (hasExitedVietnam || tv.current_status) {
+          updated.status = hasExitedVietnam
+            ? VIETNAM_EXIT_STATUS
+            : tv.current_status;
         }
 
         return updated;
@@ -2839,23 +2851,7 @@ app.post(
       if (
         result?.success
       ) {
-        const hasExitedVietnam =
-          Array.isArray(result?.history) &&
-          result.history.some((item) => {
-            const text =
-              typeof item === 'string'
-                ? item
-                : String(
-                    item?.status ||
-                    item?.name ||
-                    item?.text ||
-                    ''
-                  );
-
-            return text.includes(
-              'Xuất kho Việt Nam'
-            );
-          });
+        const hasExitedVietnam = hasVietnamExit(result);
 
         order.tuanvinh =
           result;
@@ -2864,11 +2860,10 @@ app.post(
           order.tuanvinh_locked === true ||
           hasExitedVietnam;
 
-        if (
-          result.current_status
-        ) {
-          order.status =
-            result.current_status;
+        if (hasExitedVietnam || result.current_status) {
+          order.status = hasExitedVietnam
+            ? VIETNAM_EXIT_STATUS
+            : result.current_status;
         }
 
         payload.orders[

@@ -42,16 +42,19 @@ function translateSku(sku) {
 }
 
 const TUANVINH_CUTOFF = '2026-09-01'
+const VIETNAM_EXIT_STATUS = 'Đã xuất kho Việt Nam'
 
 const statusConfig = {
   'Đã giao': { label: 'Đã giao', className: 'delivered' },
   'Đang vận chuyển': { label: 'Đang vận chuyển', className: 'shipping' },
   'Chưa giao': { label: 'Chưa giao', className: 'pending' },
+  [VIETNAM_EXIT_STATUS]: { label: VIETNAM_EXIT_STATUS, className: 'vietnam-exit' },
 }
 
 function statusClass(status) {
   const value = String(status || '').toLowerCase()
   if (value.includes('chưa giao') || value.includes('không tìm thấy')) return 'pending'
+  if (value.includes('xuất kho việt nam') || value.includes('đã xuất kho việt nam')) return 'vietnam-exit'
   if (value.includes('đã giao') || value.includes('giao hàng thành công')) return 'delivered'
   if (value.includes('nhập kho việt nam')) return 'vietnam-warehouse'
   if (value.includes('nhập kho trung quốc')) return 'china-warehouse'
@@ -63,12 +66,24 @@ function StatusBadge({ status }) {
   return <span className={`status-badge ${statusClass(label)}`}>{label}</span>
 }
 
+function hasVietnamExit(data) {
+  const currentStatus = String(data?.current_status || data?.status || '').toLowerCase()
+  if (currentStatus.includes('xuất kho việt nam')) return true
+
+  return (Array.isArray(data?.history) ? data.history : []).some((entry) => {
+    const status = typeof entry === 'string' ? entry : entry?.status || entry?.name || entry?.text || ''
+    return String(status).toLowerCase().includes('xuất kho việt nam')
+  })
+}
+
 function statusCategory(order) {
-  if (dateKey(order.order_date) <= TUANVINH_CUTOFF) return 'Đã giao'
+  // Tuấn Vĩnh là nguồn ưu tiên khi order có tracking. Mốc xuất kho VN
+  // luôn là trạng thái cuối, kể cả khi current_status cũ chưa được cập nhật.
+  if (hasVietnamExit(order.tuanvinh)) return VIETNAM_EXIT_STATUS
+  if (order.tracking_number && order.tuanvinh?.current_status) return order.tuanvinh.current_status
+  if (!order.tracking_number && dateKey(order.order_date) < TUANVINH_CUTOFF) return VIETNAM_EXIT_STATUS
   if (!order.tracking_number) return 'Chưa giao'
-  const tvStatus = order.tuanvinh?.current_status || order.status
-  const value = String(tvStatus || '').toLowerCase()
-  if (value.includes('đã giao') || value.includes('giao hàng thành công')) return 'Đã giao'
+  if (String(order.status || '').toLowerCase().includes('xuất kho việt nam')) return VIETNAM_EXIT_STATUS
   return 'Đang vận chuyển'
 }
 
@@ -171,11 +186,7 @@ function normalizeOrders(payload) {
       tuanvinh: order.tuanvinh || null,
     }
 
-    if (dateKey(normalized.order_date) <= TUANVINH_CUTOFF) {
-      normalized.status = 'Đã giao'
-    } else if (!normalized.tracking_number) {
-      normalized.status = 'Chưa giao'
-    }
+    normalized.status = statusCategory(normalized)
 
     return normalized
   })
@@ -213,7 +224,7 @@ function OrderCard({ order, onClick, onImageClick, exchangeRate, formatVnd }) {
             <span className="order-label">ORDER ID</span>
             <strong>#{order.order_id || '-'}</strong>
           </div>
-          <StatusBadge status={isAfterTuanVinhCutoff(order) && order.tuanvinh?.current_status ? order.tuanvinh.current_status : category} />
+          <StatusBadge status={category} />
         </div>
         <div className="order-card-shop">{order.shop_name || 'Không xác định'}</div>
         <div className="order-card-bottom">
@@ -323,7 +334,7 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
   const weight =
     Number(tv?.weight_kg || 0)
   const shippingCost = calculateShippingCost(weight)
-  const displayStatus = isAfterTuanVinhCutoff(order) && tv?.current_status ? tv.current_status : statusCategory(order)
+  const displayStatus = statusCategory({ ...order, tuanvinh: tv || order.tuanvinh })
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -380,18 +391,12 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
 
                       {(!autoSku || isEditing || manualSku) ? (
                         <div className="purchase-sku-recognition-controls">
-                          <select
+                          <SkuAutocomplete
+                            skuMaster={skuMaster || []}
                             value={currentSku}
-                            onChange={(event) => savePurchaseSku(item, event.target.value)}
-                            aria-label="Gán SKU cho sản phẩm"
-                          >
-                            <option value="">— Chưa phân loại —</option>
-                            {(skuMaster || []).map((master) => (
-                              <option key={master.id} value={master.id}>
-                                {master.id} — {master.name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(masterId) => savePurchaseSku(item, masterId)}
+                            ariaLabel="Gán SKU cho sản phẩm"
+                          />
                           {isEditing && autoSku && !manualSku && (
                             <button type="button" className="tracking-cancel-button" onClick={() => setSkuEditingKey(null)}>
                               Hủy
@@ -537,7 +542,7 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
           <div className="logistics-timeline">
             <div><span>Ngày nhập kho Trung</span><strong>{tvDates.chinaWarehouseAt || 'Chưa có dữ liệu'}</strong></div>
             <div><span>Ngày về Việt Nam</span><strong>{tvDates.vietnamWarehouseAt || 'Chưa có dữ liệu'}</strong></div>
-            <div><span>Ngày xuất kho</span><strong>{tvDates.vietnamExitAt || 'Chưa có dữ liệu'}</strong></div>
+            <div><span>Ngày xuất kho Việt Nam</span><strong>{tvDates.vietnamExitAt || 'Chưa có dữ liệu'}</strong></div>
             <div><span>Cân nặng order</span><strong>{weight > 0 ? `${weight.toFixed(2)} kg` : 'Chưa có dữ liệu'}</strong></div>
             <div><span>Phí vận chuyển</span><strong className="shipping-cost">{shippingCost > 0 ? formatVnd(shippingCost) : 'Chưa có dữ liệu'}</strong></div>
             {tv?.fetched_at && <div><span>Cập nhật Tuấn Vĩnh</span><strong>{formatTimeValue(tv.fetched_at)}</strong></div>}
@@ -875,7 +880,7 @@ function getAutoMatchedSku(item, skuMaster) {
   ) || null
 }
 
-function SkuAutocomplete({ skuMaster, value, onChange, disabled }) {
+function SkuAutocomplete({ skuMaster, value, onChange, disabled, ariaLabel = 'Tìm SKU hoặc tên sản phẩm' }) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const selectedSku = skuMaster.find((sku) => sku.id === value)
@@ -884,6 +889,7 @@ function SkuAutocomplete({ skuMaster, value, onChange, disabled }) {
     if (!normalizedSearch) return true
     return `${sku.id} ${sku.name || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(normalizedSearch)
   })
+  const showClearOption = !normalizedSearch || 'chua phan loai'.includes(normalizedSearch)
   const inputValue = open ? search : selectedSku ? `${selectedSku.id} — ${selectedSku.name}` : search
 
   return <div className="sku-autocomplete">
@@ -891,12 +897,16 @@ function SkuAutocomplete({ skuMaster, value, onChange, disabled }) {
       disabled={disabled}
       type="text"
       placeholder="Tìm SKU hoặc tên sản phẩm"
+      aria-label={ariaLabel}
       value={inputValue}
       onFocus={() => { setSearch(''); setOpen(true) }}
       onBlur={() => setOpen(false)}
       onChange={(event) => { setSearch(event.target.value); setOpen(true); onChange('') }}
     />
-    <div className={`sku-suggestions ${open && filteredSkus.length ? 'is-open' : ''}`} role="listbox">
+    <div className={`sku-suggestions ${open && (filteredSkus.length || showClearOption) ? 'is-open' : ''}`} role="listbox">
+      {showClearOption && <button type="button" className="sku-suggestions-clear" role="option" onMouseDown={(event) => { event.preventDefault(); onChange(''); setSearch(''); setOpen(false) }}>
+        — Chưa phân loại —
+      </button>}
       {filteredSkus.map((sku) => <button type="button" key={sku.id} role="option" onMouseDown={(event) => { event.preventDefault(); onChange(sku.id); setSearch(''); setOpen(false) }}>
         <strong>{sku.id}</strong><span>{sku.name}</span>
       </button>)}
@@ -2684,7 +2694,7 @@ useEffect(() => {
 
           <div className="toolbar">
             <div className="search-box"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm Order ID, sản phẩm, shop, tracking..." />{search && <button type="button" onClick={() => setSearch('')}>×</button>}</div>
-            <div className="filters">{['Tất cả', 'Chưa giao', 'Đang vận chuyển', 'Đã giao'].map((filter) => <button key={filter} type="button" className={activeFilter === filter ? 'active' : ''} onClick={() => setActiveFilter(filter)}>{filter}</button>)}</div>
+            <div className="filters">{['Tất cả', 'Chưa giao', 'Đang vận chuyển', 'Nhập kho Việt Nam', VIETNAM_EXIT_STATUS, 'Đã giao'].map((filter) => <button key={filter} type="button" className={activeFilter === filter ? 'active' : ''} onClick={() => setActiveFilter(filter)}>{filter}</button>)}</div>
           </div>
 
           <div className="orders-content">

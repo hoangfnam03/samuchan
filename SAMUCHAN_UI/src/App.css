@@ -476,6 +476,11 @@ th:nth-child(8) { width: 145px; }
   background: #f3eaff;
 }
 
+.status-badge.vietnam-exit {
+  color: #167a50;
+  background: #e8f8f0;
+}
+
 .status-badge.pending {
   color: #a94a4a;
   background: #ffeded;
@@ -821,6 +826,12 @@ code {
 
 .sku-suggestions button strong {
   color: #40336e;
+}
+
+.sku-suggestions .sku-suggestions-clear {
+  display: block;
+  color: #6b48d0;
+  font-weight: 700;
 }
 
 .shop-form-field input,
@@ -1174,6 +1185,19 @@ code {
 }
 .purchase-sku-recognition-heading small { text-transform:none; letter-spacing:0; font-weight:700; }
 .purchase-sku-recognition-controls { display:flex; gap:7px; align-items:center; }
+.purchase-sku-recognition-controls .sku-autocomplete { flex:1; min-width:0; }
+.purchase-sku-recognition-controls .sku-autocomplete > input {
+  width:100%;
+  box-sizing:border-box;
+  height:34px;
+  padding:0 9px;
+  border:1px solid #dcd9e7;
+  border-radius:8px;
+  background:#fff;
+  color:#36333e;
+  font-size:11px;
+}
+.purchase-sku-recognition-controls .sku-suggestions { max-height:190px; }
 .purchase-sku-recognition select {
   flex:1;
   min-width:0;
