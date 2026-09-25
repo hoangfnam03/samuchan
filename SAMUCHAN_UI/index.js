@@ -30,9 +30,10 @@ const PORT = process.env.PORT || 3001;
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-const DATA_DIR = path.join(
-  PROJECT_ROOT,
-  'data'
+const DATA_DIR = path.resolve(
+  process.env.SAMUCHAN_DATA_DIR ||
+    process.env.RAILWAY_VOLUME_MOUNT_PATH ||
+    path.join(PROJECT_ROOT, 'data')
 );
 
 const TAOBAO_ORDERS_FILE = path.join(
@@ -3011,15 +3012,19 @@ async function readJsonFile(file, fallback) {
 
 // ---------- Write JSON safely ----------
 async function writeJsonFile(file, data) {
-  await fs.writeFile(
-    file,
-    JSON.stringify(
-      data,
-      null,
-      2
-    ),
-    'utf-8'
-  );
+  const serialized = JSON.stringify(data, null, 2);
+  const temporaryFile = `${file}.tmp`;
+  const backupFile = `${file}.bak`;
+
+  await fs.writeFile(temporaryFile, serialized, 'utf-8');
+
+  try {
+    await fs.copyFile(file, backupFile);
+  } catch {
+    // Chưa có file cũ ở lần ghi đầu tiên.
+  }
+
+  await fs.rename(temporaryFile, file);
 }
 
 // ============================================================

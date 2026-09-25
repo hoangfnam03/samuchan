@@ -1012,7 +1012,7 @@ function SkuMasterPage({
     reader.readAsDataURL(file)
   }
 
-  const saveSku = () => {
+  const saveSku = async () => {
     const id = skuId.trim()
     const name = skuName.trim()
 
@@ -1073,12 +1073,15 @@ function SkuMasterPage({
     )
 
     setSkuMaster(next)
-    saveSkuMaster(next)
+    const saved = await saveSkuMaster(next)
+    if (!saved) {
+      alert('Không lưu được SKU lên Railway. Vui lòng thử lại trước khi rời trang.')
+    }
 
     resetForm()
   }
 
-  const deleteSku = (id) => {
+  const deleteSku = async (id) => {
     const sku = skuMaster.find((x) => x.id === id)
 
     if (!sku) return
@@ -1092,7 +1095,10 @@ function SkuMasterPage({
     const next = skuMaster.filter((x) => x.id !== id)
 
     setSkuMaster(next)
-    saveSkuMaster(next)
+    const saved = await saveSkuMaster(next)
+    if (!saved) {
+      alert('Không lưu được thay đổi SKU lên Railway. Vui lòng thử lại.')
+    }
   }
 
   const filtered = skuMaster.filter((sku) => {
