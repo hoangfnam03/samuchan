@@ -20,7 +20,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// SKU Master có thể chứa nhiều ảnh Base64 nên request lưu toàn bộ danh sách
+// có thể lớn hơn 10 MB.
+app.use(express.json({ limit: '50mb' }));
 
 const PORT = process.env.PORT || 3001;
 

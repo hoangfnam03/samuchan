@@ -735,19 +735,11 @@ async function saveSkuMaster(data) {
       }
     )
 
-    if (!response.ok) {
-      throw new Error(
-        `SKU Master HTTP ${response.status}`
-      )
-    }
+    const result = await response.json().catch(() => null)
 
-    const result =
-      await response.json()
-
-    if (!result?.success) {
+    if (!response.ok || !result?.success) {
       throw new Error(
-        result?.message ||
-        'Không lưu được SKU Master'
+        result?.message || `SKU Master HTTP ${response.status}`
       )
     }
 
