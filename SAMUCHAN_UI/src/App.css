@@ -489,6 +489,11 @@ th:nth-child(8) { width: 145px; }
   background: #ffeded;
 }
 
+.status-badge.cancelled {
+  color: #7a3f4b;
+  background: #fbe8ed;
+}
+
 .table-footer {
   display: flex;
   justify-content: space-between;
@@ -501,6 +506,33 @@ th:nth-child(8) { width: 145px; }
   text-align: center;
   padding: 50px !important;
   color: #999ba3;
+}
+
+.order-cancel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 25px 25px;
+  padding-top: 4px;
+}
+
+.order-cancel-button {
+  border: 1px solid #e3b5bf;
+  color: #a23f50;
+  background: #fff6f8;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.order-cancel-button:hover {
+  background: #fbe8ed;
+}
+
+.order-cancel-button:disabled {
+  opacity: .65;
+  cursor: wait;
 }
 
 .modal-backdrop {

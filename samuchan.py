@@ -1407,6 +1407,12 @@ def save_orders(orders):
             if previous.get("tuanvinh_locked") is not None:
                 order["tuanvinh_locked"] = previous["tuanvinh_locked"]
 
+        # Giữ nguyên trạng thái hủy do người dùng đánh dấu trên SAMUCHAN.
+        if previous.get("cancelled") is True:
+            order["cancelled"] = True
+            order["cancelled_at"] = previous.get("cancelled_at")
+            order["status"] = "Đã hủy"
+
         # Merge theo Order ID.
         merged[str(oid)] = order
 

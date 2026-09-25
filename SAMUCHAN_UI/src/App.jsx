@@ -104,6 +104,7 @@ function translateSku(sku) {
 }
 
 const TUANVINH_CUTOFF = '2026-09-01'
+const CANCELLED_STATUS = '\u0110\u00e3 h\u1ee7y'
 const VIETNAM_EXIT_STATUS = 'Đã xuất kho Việt Nam'
 
 const statusConfig = {
@@ -115,6 +116,7 @@ const statusConfig = {
 
 function statusClass(status) {
   const value = String(status || '').toLowerCase()
+  if (value.includes('h\u1ee7y')) return 'cancelled'
   if (value.includes('chưa giao') || value.includes('không tìm thấy')) return 'pending'
   if (value.includes('xuất kho việt nam') || value.includes('đã xuất kho việt nam')) return 'vietnam-exit'
   if (value.includes('đã giao') || value.includes('giao hàng thành công')) return 'delivered'
@@ -141,6 +143,7 @@ function hasVietnamExit(data) {
 function statusCategory(order) {
   // Tuấn Vĩnh là nguồn ưu tiên khi order có tracking. Mốc xuất kho VN
   // luôn là trạng thái cuối, kể cả khi current_status cũ chưa được cập nhật.
+  if (order.cancelled === true || String(order.status || '').toLowerCase().includes('h\u1ee7y')) return CANCELLED_STATUS
   if (hasVietnamExit(order.tuanvinh)) return VIETNAM_EXIT_STATUS
   if (order.tracking_number && order.tuanvinh?.current_status) return order.tuanvinh.current_status
   if (!order.tracking_number && dateKey(order.order_date) < TUANVINH_CUTOFF) return VIETNAM_EXIT_STATUS
@@ -246,6 +249,7 @@ function normalizeOrders(payload) {
       delivered_to_china_at: order.delivered_to_china_at || null,
       items: Array.isArray(order.items) ? order.items : [],
       tuanvinh: order.tuanvinh || null,
+      cancelled: order.cancelled === true || String(order.status || '').toLowerCase().includes('h\u1ee7y'),
     }
 
     normalized.status = statusCategory(normalized)
@@ -301,7 +305,7 @@ function OrderCard({ order, onClick, onImageClick, exchangeRate, formatVnd }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVnd, onTrackingSaved, onRefreshTuanVinh, skuMaster, skuLinks, onSkuLinkSaved }) {
+function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVnd, onTrackingSaved, onOrderCancelled, onRefreshTuanVinh, skuMaster, skuLinks, onSkuLinkSaved }) {
   const totalQuantity = order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
   const [trackingInput, setTrackingInput] = useState(order.tracking_number || '')
   const [trackingSaving, setTrackingSaving] = useState(false)
@@ -310,6 +314,8 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
   const [liveTuanVinh, setLiveTuanVinh] = useState(order.tuanvinh || null)
   const [skuEditingKey, setSkuEditingKey] = useState(null)
   const [skuMessage, setSkuMessage] = useState('')
+  const [cancelSaving, setCancelSaving] = useState(false)
+  const [cancelMessage, setCancelMessage] = useState('')
 
   useEffect(() => {
     setTrackingInput(order.tracking_number || '')
@@ -318,6 +324,7 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
     setLiveTuanVinh(order.tuanvinh || null)
     setSkuEditingKey(null)
     setSkuMessage('')
+    setCancelMessage('')
   }, [order.order_id, order.tracking_number, order.tuanvinh])
 
   const savePurchaseSku = (item, masterId) => {
@@ -325,6 +332,41 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
       onSkuLinkSaved(order, item, masterId)
       setSkuEditingKey(null)
       setSkuMessage('Đã lưu nhận diện SKU cho sản phẩm này.')
+    }
+  }
+
+  const cancelOrder = async () => {
+    if (order.cancelled || cancelSaving) return
+    if (!window.confirm('Bạn có chắc muốn đánh dấu đơn này là đã hủy không?')) return
+
+    setCancelSaving(true)
+    setCancelMessage('Đang lưu trạng thái hủy đơn...')
+
+    try {
+      const response = await fetch('/api/taobao/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.order_id }),
+      })
+      const data = await readApiJson(response)
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.message || data?.error || 'Không lưu được trạng thái hủy đơn')
+      }
+
+      const savedOrder = {
+        ...order,
+        ...(data?.order || {}),
+        cancelled: true,
+        status: CANCELLED_STATUS,
+      }
+
+      if (typeof onOrderCancelled === 'function') onOrderCancelled(savedOrder)
+      setCancelMessage('Đã đánh dấu đơn là đã hủy.')
+    } catch (err) {
+      setCancelMessage(`⚠️ ${err.message || 'Không lưu được trạng thái hủy đơn'}`)
+    } finally {
+      setCancelSaving(false)
     }
   }
 
@@ -618,6 +660,14 @@ function OrderDetailModal({ order, onClose, onImageClick, exchangeRate, formatVn
           <div className="logistics-note">Đang chờ dữ liệu Tuấn Vĩnh cho tracking này.</div>
         )}
         {order.logistics_note && <div className="logistics-note">ℹ️ {order.logistics_note}</div>}
+        <div className="order-cancel-actions">
+          {!order.cancelled && (
+            <button type="button" className="order-cancel-button" onClick={cancelOrder} disabled={cancelSaving}>
+              {cancelSaving ? 'Đang lưu...' : 'Hủy đơn'}
+            </button>
+          )}
+          {cancelMessage && <em className={cancelMessage.startsWith('⚠️') ? 'tracking-error' : 'tracking-success'}>{cancelMessage}</em>}
+        </div>
       </div>
     </div>
   )
@@ -2655,6 +2705,16 @@ useEffect(() => {
     )
   }
 
+  const handleOrderCancelled = (updatedOrder) => {
+    setOrders((current) => current.map((item) =>
+      item.order_id === updatedOrder.order_id ? { ...item, ...updatedOrder } : item
+    ))
+    setSelectedOrder((current) => current && current.order_id === updatedOrder.order_id
+      ? { ...current, ...updatedOrder }
+      : current
+    )
+  }
+
   const handleSkuLinkSaved = useCallback((order, item, masterId) => {
     const key = purchaseItemKey(order, item)
     setSkuLinks((current) => {
@@ -2844,7 +2904,7 @@ useEffect(() => {
 
           <div className="toolbar">
             <div className="search-box"><span>⌕</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm Order ID, sản phẩm, shop, tracking..." />{search && <button type="button" onClick={() => setSearch('')}>×</button>}</div>
-            <div className="filters">{['Tất cả', 'Chưa giao', 'Đang vận chuyển', 'Nhập kho Việt Nam', VIETNAM_EXIT_STATUS, 'Đã giao'].map((filter) => <button key={filter} type="button" className={activeFilter === filter ? 'active' : ''} onClick={() => setActiveFilter(filter)}>{filter}</button>)}</div>
+            <div className="filters">{['Tất cả', 'Chưa giao', 'Đang vận chuyển', 'Nhập kho Việt Nam', VIETNAM_EXIT_STATUS, 'Đã giao', CANCELLED_STATUS].map((filter) => <button key={filter} type="button" className={activeFilter === filter ? 'active' : ''} onClick={() => setActiveFilter(filter)}>{filter}</button>)}</div>
           </div>
 
           <div className="orders-content">
@@ -2870,6 +2930,7 @@ useEffect(() => {
             exchangeRate={exchangeRate}
             formatVnd={formatVnd}
             onTrackingSaved={handleTrackingSaved}
+            onOrderCancelled={handleOrderCancelled}
             onRefreshTuanVinh={refreshOneTuanVinh}
             skuMaster={skuMaster}
             skuLinks={skuLinks}

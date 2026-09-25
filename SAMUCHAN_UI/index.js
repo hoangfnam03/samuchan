@@ -2763,6 +2763,59 @@ app.post(
 );
 
 // ============================================================
+// CANCEL TAOBAO ORDER
+
+app.post(
+  '/api/taobao/cancel',
+  async (req, res) => {
+    try {
+      const orderId = cleanText(req.body?.order_id)
+
+      if (!orderId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Order ID rỗng.',
+        })
+      }
+
+      const payload = await readTaobaoOrders()
+      const index = payload.orders.findIndex(
+        (order) => cleanText(order?.order_id) === orderId
+      )
+
+      if (index === -1) {
+        return res.status(404).json({
+          success: false,
+          message: `Không tìm thấy Order ID ${orderId}`,
+        })
+      }
+
+      const order = {
+        ...payload.orders[index],
+        cancelled: true,
+        cancelled_at: new Date().toISOString(),
+        status: 'Đã hủy',
+        logistics_note: 'Đơn đã được đánh dấu hủy trên SAMUCHAN.',
+      }
+
+      payload.orders[index] = order
+      await saveTaobaoOrders(payload)
+
+      res.json({
+        success: true,
+        order,
+        message: 'Đã lưu trạng thái hủy đơn.',
+      })
+    } catch (error) {
+      console.error('[CANCEL ORDER ERROR]', error)
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      })
+    }
+  }
+)
+
 // FORCE REFRESH ORDER
 // ============================================================
 
@@ -2821,6 +2874,15 @@ app.post(
         payload.orders[
           index
         ];
+
+      if (order.cancelled === true) {
+        return res.json({
+          success: true,
+          order,
+          tuanvinh: order.tuanvinh || null,
+          message: 'Đơn đã hủy, không cập nhật trạng thái vận chuyển.',
+        });
+      }
 
       const tracking =
         cleanTracking(
