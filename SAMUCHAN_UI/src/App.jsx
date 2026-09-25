@@ -883,7 +883,7 @@ function getAutoMatchedSku(item, skuMaster) {
 function SkuAutocomplete({ skuMaster, value, onChange, disabled, skuPrefix = '', ariaLabel = 'Tìm SKU hoặc tên sản phẩm' }) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
-  const selectedSku = skuMaster.find((sku) => sku.id === value)
+  const selectedSku = skuMaster.find((sku) => String(sku.id) === String(value))
   const availableSkus = skuPrefix
     ? skuMaster.filter((sku) => String(sku.id || '').trim().toUpperCase().startsWith(skuPrefix))
     : skuMaster
@@ -911,9 +911,14 @@ function SkuAutocomplete({ skuMaster, value, onChange, disabled, skuPrefix = '',
         — Chưa phân loại —
       </button>}
       {filteredSkus.map((sku) => <button type="button" key={sku.id} role="option" onMouseDown={(event) => { event.preventDefault(); onChange(sku.id); setSearch(''); setOpen(false) }}>
-        <strong>{sku.id}</strong><span>{sku.name}</span>
+        <span className="sku-suggestion-image">{sku.image ? <img src={sku.image} alt="" /> : '🛍️'}</span>
+        <span className="sku-suggestion-copy"><strong>{sku.id}</strong><span>{sku.name}</span></span>
       </button>)}
     </div>
+    {selectedSku && <div className="sku-selected-preview">
+      <span className="sku-selected-image">{selectedSku.image ? <img src={selectedSku.image} alt={selectedSku.name || selectedSku.id} /> : '🛍️'}</span>
+      <span><strong>{selectedSku.id}</strong><small>{selectedSku.name || 'Chưa có tên sản phẩm'}</small></span>
+    </div>}
   </div>
 }
 

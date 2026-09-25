@@ -796,7 +796,7 @@ code {
 
 .sku-suggestions button {
   display: grid;
-  grid-template-columns: minmax(90px, .75fr) minmax(0, 1.5fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   gap: 8px;
   width: 100%;
   min-height: 34px;
@@ -826,6 +826,82 @@ code {
 
 .sku-suggestions button strong {
   color: #40336e;
+}
+
+.sku-suggestion-image,
+.sku-selected-image {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #f1eff7;
+  color: #7652df;
+}
+
+.sku-suggestion-image {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+
+.sku-suggestion-image img,
+.sku-selected-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sku-suggestion-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 2px;
+}
+
+.sku-suggestion-copy span {
+  color: #777482;
+  font-size: 11px;
+}
+
+.sku-selected-preview {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+  padding: 6px 8px;
+  border: 1px solid #e7e1f5;
+  border-radius: 8px;
+  background: #fbfaff;
+}
+
+.sku-selected-image {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  font-size: 17px;
+}
+
+.sku-selected-preview > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sku-selected-preview strong,
+.sku-selected-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sku-selected-preview strong {
+  color: #40336e;
+  font-size: 11px;
+}
+
+.sku-selected-preview small {
+  color: #777482;
+  font-size: 10px;
 }
 
 .sku-suggestions .sku-suggestions-clear {
