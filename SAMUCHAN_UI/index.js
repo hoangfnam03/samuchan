@@ -3012,6 +3012,34 @@ async function readJsonFile(file, fallback) {
   }
 }
 
+function skuMasterCorruptionScore(skus) {
+  return (Array.isArray(skus) ? skus : []).reduce((score, sku) => {
+    const text = [
+      sku?.name,
+      ...(Array.isArray(sku?.taobao_skus) ? sku.taobao_skus : []),
+    ].join(' ');
+    const replacementCount = (text.match(/\uFFFD/g) || []).length;
+    const questionMarkCount = (text.match(/\?/g) || []).length;
+    return score + replacementCount * 2 + questionMarkCount;
+  }, 0);
+}
+
+async function readSkuMasterData() {
+  const current = await readJsonFile(SKU_MASTER_FILE, []);
+  const backup = await readJsonFile(`${SKU_MASTER_FILE}.bak`, null);
+
+  if (
+    Array.isArray(backup) &&
+    Array.isArray(current) &&
+    backup.length === current.length &&
+    skuMasterCorruptionScore(backup) < skuMasterCorruptionScore(current)
+  ) {
+    return backup;
+  }
+
+  return current;
+}
+
 // ---------- Write JSON safely ----------
 async function writeJsonFile(file, data) {
   const serialized = JSON.stringify(data, null, 2);
@@ -3041,11 +3069,7 @@ app.get(
     res
   ) => {
     try {
-      const data =
-        await readJsonFile(
-          SKU_MASTER_FILE,
-          []
-        );
+      const data = await readSkuMasterData();
 
       res.json({
         success: true,

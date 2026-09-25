@@ -31,6 +31,9 @@ const SKU_TRANSLATIONS = {
 }
 
 const SKU_NAME_FIXES = {
+  DJK_001: 'Mạch BMS_150A',
+  DJK_004: 'Mạch BMS_200A',
+  DJK_005: 'Mạch BMS_100A',
   DJK_006: 'Trạm hàn C245',
   NOMORI_001: 'Bảng ghim trái tim_size 80*120cm',
   SAMU_001: 'Túi CTLNO_màu nâu',
@@ -52,7 +55,7 @@ const SKU_NAME_FIXES = {
 function normalizeSkuRecord(sku) {
   const id = String(sku?.id || '').trim()
   const name = String(sku?.name || '')
-  return name.includes('\uFFFD') && SKU_NAME_FIXES[id]
+  return (name.includes('\uFFFD') || name.includes('?')) && SKU_NAME_FIXES[id]
     ? { ...sku, name: SKU_NAME_FIXES[id] }
     : sku
 }
