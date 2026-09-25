@@ -1938,9 +1938,12 @@ function runTaobaoPythonSync() {
           ? venvPython
           : 'python';
 
+      // Railway phải chạy thẳng chế độ non-interactive. Nếu chạy menu mặc
+      // định rồi chờ gửi phím "1", child process có thể không nhận prompt
+      // đúng lúc và Chromium cũng bị khởi động nhầm ở chế độ có giao diện.
       const commandArgs = [
         script,
-    
+        '--sync',
       ];
 
 
