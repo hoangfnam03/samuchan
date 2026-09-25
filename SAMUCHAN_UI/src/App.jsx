@@ -1728,6 +1728,7 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
   const [selectedMonth, setSelectedMonth] = useState('all')
   const [selectedDay, setSelectedDay] = useState('all')
   const [selectedChartMonth, setSelectedChartMonth] = useState(null)
+  const [saleSearch, setSaleSearch] = useState('')
   const [buyerSuggestionsOpen, setBuyerSuggestionsOpen] = useState(false)
   const [form, setForm] = useState({ sku: '', buyerName: '', salesChannel: '', carrier: '', quantity: 1, revenue: '', shipping: '', purchaseOrderId: '', orderDate: todayInputValue(), completedDate: '' })
 
@@ -1880,11 +1881,17 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
   const availableYears = [...new Set(sales.map((sale) => saleDate(sale).slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a))
   const availableMonths = [...new Set(sales.map((sale) => saleDate(sale)).filter((date) => date && (selectedYear === 'all' || date.startsWith(`${selectedYear}-`))).map((date) => date.slice(5, 7)))].sort((a, b) => Number(a) - Number(b))
   const availableDays = [...new Set(sales.map((sale) => saleDate(sale)).filter((date) => date && (selectedYear === 'all' || date.startsWith(`${selectedYear}-`)) && (selectedMonth === 'all' || date.slice(5, 7) === selectedMonth)).map((date) => date.slice(8, 10)))].sort((a, b) => Number(a) - Number(b))
+  const saleSearchQuery = saleSearch.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   const filteredSales = sales.filter((sale) => {
     const date = saleDate(sale)
+    const sku = skuMaster.find((item) => String(item.id) === String(sale.sku)) || {}
+    const searchableText = [sale.buyerName, sale.sku, sku.name]
+      .map((value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase())
+      .join(' ')
     return (selectedYear === 'all' || date.startsWith(`${selectedYear}-`))
       && (selectedMonth === 'all' || date.slice(5, 7) === selectedMonth)
       && (selectedDay === 'all' || date.slice(8, 10) === selectedDay)
+      && (!saleSearchQuery || searchableText.includes(saleSearchQuery))
   })
 
   const monthlyMap = new Map()
@@ -1945,6 +1952,14 @@ function ShopPage({ shopName = DEFAULT_SHOP_NAME, skuMaster, orders, exchangeRat
     <section className="orders-card shop-filter-card">
       <div className="date-filter-heading"><span className="date-filter-icon">◷</span><div><strong>Lọc đơn bán</strong><small>Biểu đồ và danh sách bên dưới cùng thay đổi theo bộ lọc.</small></div></div>
       <div className="date-filter-controls"><label><span>Năm</span><select value={selectedYear} onChange={(e) => { setSelectedYear(e.target.value); setSelectedMonth('all'); setSelectedDay('all') }}><option value="all">Tất cả năm</option>{availableYears.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><label><span>Tháng</span><select value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setSelectedDay('all') }}><option value="all">Tất cả tháng</option>{availableMonths.map((month) => <option key={month} value={month}>Tháng {Number(month)}</option>)}</select></label><label><span>Ngày</span><select value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} disabled={selectedMonth === 'all'}><option value="all">Tất cả ngày</option>{availableDays.map((day) => <option key={day} value={day}>Ngày {Number(day)}</option>)}</select></label></div>
+      <div className="shop-sales-search-row">
+        <div className="search-box shop-sales-search-box">
+          <span>⌕</span>
+          <input type="search" value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder="Tìm theo tên người mua hoặc tên SKU..." aria-label="Tìm đơn bán theo tên người mua hoặc tên SKU" />
+          {saleSearch && <button type="button" onClick={() => setSaleSearch('')} aria-label="Xóa tìm kiếm">×</button>}
+        </div>
+        {saleSearch && <small className="shop-sales-search-count">{filteredSales.length} đơn phù hợp</small>}
+      </div>
     </section>
 
     <div className="dashboard-cards shop-summary-cards"><div><span>Đơn bán</span><strong>{filteredSales.length}</strong></div><div><span>Doanh thu</span><strong>{formatVnd(totalRevenue)}</strong></div><div><span>Tổng giá vốn</span><strong>{formatVnd(totalCost)}</strong></div><div><span>Lợi nhuận</span><strong className={totalProfit >= 0 ? 'profit-positive' : 'profit-negative'}>{formatVnd(totalProfit)}</strong></div></div>

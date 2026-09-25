@@ -883,6 +883,40 @@ code {
   flex: 1;
 }
 
+.shop-sales-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.shop-sales-search-box {
+  width: min(430px, 100%);
+  background: #fff;
+}
+
+.shop-sales-search-box input {
+  min-width: 0;
+}
+
+.shop-sales-search-box button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: #f0edf7;
+  color: #777080;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.shop-sales-search-count {
+  color: #88838f;
+  font-size: 11px;
+}
+
 .shop-summary-cards {
   grid-template-columns: repeat(4, 1fr);
 }
@@ -1619,6 +1653,15 @@ code {
 }
 
 @media (max-width: 760px) {
+  .shop-sales-search-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .shop-sales-search-box {
+    width: 100%;
+  }
+
   .date-filter-bar {
     align-items: stretch;
   }
