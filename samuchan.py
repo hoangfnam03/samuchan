@@ -1,6 +1,8 @@
 from pathlib import Path
+import base64
 from datetime import datetime, timedelta
 import json
+import os
 import sys
 import re
 import time
@@ -33,12 +35,36 @@ PAGE_WAIT_MS = 2500
 # ============================================================
 
 
-def create_browser(p):
+def load_storage_state_from_env(storage_state):
+    encoded = os.getenv("TAOBAO_STORAGE_STATE_B64", "").strip()
+    if not encoded:
+        return
+
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        json.loads(decoded)
+        storage_state.write_text(decoded, encoding="utf-8")
+        print("✓ Đã nạp Taobao storage state từ biến môi trường.")
+    except Exception as error:
+        print("⚠️ TAOBAO_STORAGE_STATE_B64 không hợp lệ:", str(error)[:180])
+
+
+def save_storage_state(context):
+    try:
+        storage_state = DATA_DIR / "taobao_storage_state.json"
+        context.storage_state(path=str(storage_state))
+        print("✓ Đã lưu Taobao storage state:", storage_state)
+    except Exception as error:
+        print("⚠️ Không lưu được Taobao storage state:", str(error)[:180])
+
+
+def create_browser(p, interactive=False):
     storage_state = DATA_DIR / "taobao_storage_state.json"
+    load_storage_state_from_env(storage_state)
 
     try:
         browser = p.chromium.launch(
-            headless=True,
+            headless=not interactive,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -1499,7 +1525,7 @@ def show_dashboard(orders):
 
 def run_taobao(interactive=True):
     with sync_playwright() as p:
-        context, page = create_browser(p)
+        context, page = create_browser(p, interactive=interactive)
         if context is None:
             return False
 
@@ -1520,6 +1546,7 @@ def run_taobao(interactive=True):
             return True
         finally:
             try:
+                save_storage_state(context)
                 context.close()
             except Exception:
                 pass
@@ -1527,7 +1554,7 @@ def run_taobao(interactive=True):
 
 def check_profile():
     with sync_playwright() as p:
-        context, page = create_browser(p)
+        context, page = create_browser(p, interactive=True)
         if context is None:
             return
         try:
@@ -1537,6 +1564,7 @@ def check_profile():
             input("\nENTER để đóng browser...")
         finally:
             try:
+                save_storage_state(context)
                 context.close()
             except Exception:
                 pass
