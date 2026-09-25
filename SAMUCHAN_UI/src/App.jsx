@@ -50,14 +50,44 @@ const SKU_NAME_FIXES = {
   SAMU_012: 'Túi vuông đen',
   SAMU_013: 'Túi sắc xanh',
   SAMU_014: 'Túi sắc vàng',
+  SAMU_015: 'Túi sọc đỏ',
+  SAMU_016: 'Túi sọc đen',
+  SAMU_017: 'Túi rêu',
+  SAMU_018: 'Túi trắng',
+  SAMU_019: 'Túi nâu',
+  SAMU_020: 'Túi đen',
+}
+
+const SKU_ALIAS_FIXES = {
+  DJK_001: ['16串铁锂持续150A峰值450A[限流10A];UART+CAN+RS485;wifi蓝牙'],
+  DJK_004: ['16串铁锂持续200A峰值600A[限流10A];UART+CAN+RS485;wifi蓝牙'],
+  DJK_005: ['16串铁锂持续100A峰值300A[限流10A];UART+CAN+RS485;wifi蓝牙'],
+  DJK_006: ['1号 主控加245手柄'],
+  SAMU_003: ['*粉色*[带挂件]'],
+  SAMU_005: ['奶霜白（735ml不锈钢内胆）'],
+  SAMU_006: ['椰果白'],
+  SAMU_007: ['酷飒小红+挂绳'],
+  SAMU_008: ['慵懒条纹酱+挂绳'],
+  SAMU_009: ['黄绒贝帽+挂绳'],
+  SAMU_010: ['棕色无挂件'],
+  SAMU_011: ['咖色无挂件'],
+  SAMU_012: ['黑色无挂件'],
 }
 
 function normalizeSkuRecord(sku) {
   const id = String(sku?.id || '').trim()
   const name = String(sku?.name || '')
-  return (name.includes('\uFFFD') || name.includes('?')) && SKU_NAME_FIXES[id]
-    ? { ...sku, name: SKU_NAME_FIXES[id] }
-    : sku
+  const aliases = Array.isArray(sku?.taobao_skus) ? sku.taobao_skus : []
+  const cleanAliases = aliases.filter((alias) => !/[?\uFFFD]/.test(String(alias)))
+  return {
+    ...sku,
+    ...(SKU_NAME_FIXES[id] && (name.includes('\uFFFD') || name.includes('?'))
+      ? { name: SKU_NAME_FIXES[id] }
+      : {}),
+    ...(SKU_ALIAS_FIXES[id] && aliases.some((alias) => /[?\uFFFD]/.test(String(alias)))
+      ? { taobao_skus: SKU_ALIAS_FIXES[id] }
+      : { taobao_skus: cleanAliases },
+  }
 }
 
 function translateSku(sku) {
