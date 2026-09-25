@@ -75,18 +75,20 @@ const SKU_ALIAS_FIXES = {
 }
 
 function normalizeSkuRecord(sku) {
-  const id = String(sku?.id || '').trim()
-  const name = String(sku?.name || '')
-  const aliases = Array.isArray(sku?.taobao_skus) ? sku.taobao_skus : []
+  const record = sku || {}
+  const id = String(record.id || '').trim()
+  const name = String(record.name || '')
+  const aliases = Array.isArray(record.taobao_skus) ? record.taobao_skus : []
+  const hasBadName = name.includes('\uFFFD') || name.includes('?')
+  const hasBadAlias = aliases.some((alias) => /[?\uFFFD]/.test(String(alias)))
   const cleanAliases = aliases.filter((alias) => !/[?\uFFFD]/.test(String(alias)))
+
   return {
-    ...sku,
-    ...(SKU_NAME_FIXES[id] && (name.includes('\uFFFD') || name.includes('?'))
-      ? { name: SKU_NAME_FIXES[id] }
-      : {}),
-    ...(SKU_ALIAS_FIXES[id] && aliases.some((alias) => /[?\uFFFD]/.test(String(alias)))
-      ? { taobao_skus: SKU_ALIAS_FIXES[id] }
-      : { taobao_skus: cleanAliases },
+    ...record,
+    name: hasBadName && SKU_NAME_FIXES[id] ? SKU_NAME_FIXES[id] : name,
+    taobao_skus: hasBadAlias && SKU_ALIAS_FIXES[id]
+      ? SKU_ALIAS_FIXES[id]
+      : cleanAliases,
   }
 }
 
