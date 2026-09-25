@@ -30,6 +30,33 @@ const SKU_TRANSLATIONS = {
   '小号': 'Size nhỏ', '中号': 'Size vừa', '大号': 'Size lớn',
 }
 
+const SKU_NAME_FIXES = {
+  DJK_006: 'Trạm hàn C245',
+  NOMORI_001: 'Bảng ghim trái tim_size 80*120cm',
+  SAMU_001: 'Túi CTLNO_màu nâu',
+  SAMU_002: 'Túi CTLNO_màu trắng',
+  SAMU_003: 'Túi CTLNO_màu hồng',
+  SAMU_004: 'Túi da hồng - nâu',
+  SAMU_005: 'Bình giữ nhiệt 750ml',
+  SAMU_006: 'Bình giữ nhiệt 350ml',
+  SAMU_007: 'Charm khoai tây_01',
+  SAMU_008: 'Charm khoai tây_02',
+  SAMU_009: 'Charm khoai tây_03',
+  SAMU_010: 'Túi vuông da bò',
+  SAMU_011: 'Túi vuông nâu đậm',
+  SAMU_012: 'Túi vuông đen',
+  SAMU_013: 'Túi sắc xanh',
+  SAMU_014: 'Túi sắc vàng',
+}
+
+function normalizeSkuRecord(sku) {
+  const id = String(sku?.id || '').trim()
+  const name = String(sku?.name || '')
+  return name.includes('\uFFFD') && SKU_NAME_FIXES[id]
+    ? { ...sku, name: SKU_NAME_FIXES[id] }
+    : sku
+}
+
 function translateSku(sku) {
   if (!sku) return '-'
   const raw = String(sku).trim()
@@ -666,7 +693,7 @@ async function fetchSkuMaster() {
       result?.success &&
       Array.isArray(result.skus)
     ) {
-      return result.skus
+      return result.skus.map(normalizeSkuRecord)
     }
 
     throw new Error(
